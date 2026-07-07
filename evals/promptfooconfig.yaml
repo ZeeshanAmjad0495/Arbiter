@@ -1,0 +1,27 @@
+# Phase 0 seed for the eval CI-gate (§7 of the plan). Phase 1 expands this to
+# 20-30 real-failure-derived cases per workflow, wired as a Cloud Build gate.
+# Run: pnpm eval  (uses npx promptfoo — no repo dependency needed).
+#
+# This scaffold documents the grading contract for the hello Test Case Generator.
+# It is intentionally minimal; the assertions below are the shape QA engineers
+# extend in YAML without touching TypeScript.
+description: "Arbiter hello Test Case Generator — eval gate seed"
+
+prompts:
+  - "Generate a test case for this requirement: {{requirement}}"
+
+providers:
+  # Phase 1 wires this to the Arbiter pipeline endpoint (POST /v1/workflows/hello)
+  # so evals exercise the full guardrail path, not a raw model call.
+  - id: echo
+    label: placeholder-until-phase-1
+
+tests:
+  - description: "references only grounded fields"
+    vars:
+      requirement: "Verify member login returns active coverage."
+    assert:
+      - type: contains-any
+        value: ["coverage_status", "member_id", "email"]
+      - type: not-contains
+        value: "ssn_hash"

@@ -1,0 +1,25 @@
+{
+  "name": "@arbiter/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.0.4",
+    "@arbiter/config": "workspace:*",
+    "@arbiter/core": "workspace:*",
+    "@arbiter/db": "workspace:*",
+    "@arbiter/guardrail": "workspace:*",
+    "@arbiter/telemetry": "workspace:*",
+    "@arbiter/workflows": "workspace:*",
+    "fastify": "^5.10.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5"
+  }
+}

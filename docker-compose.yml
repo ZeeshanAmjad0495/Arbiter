@@ -1,0 +1,45 @@
+# Arbiter Phase 0 local substrate. `pnpm docker:up` starts these; then set the
+# matching URLs in .env to exercise the real path (Postgres persistence +
+# Presidio sanitization). Without them, everything still runs offline.
+services:
+  postgres:
+    # Phase 0/1 only needs pgcrypto (built in). Phase 2 swaps this for
+    # pgvector/pgvector:pg17 when hybrid retrieval lands.
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: arbiter
+      POSTGRES_PASSWORD: arbiter
+      POSTGRES_DB: arbiter
+    # Non-default host ports to avoid clashing with other local Postgres stacks.
+    ports:
+      - "5442:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbiter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6389:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    ports:
+      - "5002:3000"
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    ports:
+      - "5001:3000"
+
+volumes:
+  pgdata:

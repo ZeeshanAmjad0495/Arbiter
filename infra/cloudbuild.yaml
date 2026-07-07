@@ -1,0 +1,48 @@
+# Cloud Build CI for Arbiter (mirrors the company's bot-request-runner pipeline:
+# Cloud Build -> Artifact Registry -> Cloud Run, no GitHub Actions).
+# Build context / dir is the monorepo root (arbiter/).
+steps:
+  - id: install-and-verify
+    name: node:22-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm typecheck
+        pnpm test
+        pnpm eval
+
+  - id: docker-build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "apps/api/Dockerfile", "-t", "${_IMAGE}:${SHORT_SHA}", "-t", "${_IMAGE}:latest", "."]
+
+  - id: docker-push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags", "${_IMAGE}"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --no-allow-unauthenticated
+
+substitutions:
+  _IMAGE: "us-central1-docker.pkg.dev/PROJECT_ID/arbiter/api"
+  _SERVICE: "arbiter-api"
+  _REGION: "us-central1"
+
+images:
+  - "${_IMAGE}:${SHORT_SHA}"
+  - "${_IMAGE}:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

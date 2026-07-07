@@ -1,0 +1,13 @@
+{
+  "name": "@arbiter/sanitize",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@arbiter/config": "workspace:*",
+    "@arbiter/core": "workspace:*"
+  }
+}

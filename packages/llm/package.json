@@ -1,0 +1,16 @@
+{
+  "name": "@arbiter/llm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@arbiter/config": "workspace:*",
+    "@arbiter/core": "workspace:*",
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "^3.24.1"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@arbiter/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@arbiter/core": "workspace:*",
+    "zod": "^3.25.0"
+  }
+}

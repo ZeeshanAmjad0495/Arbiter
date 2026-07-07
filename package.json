@@ -1,0 +1,38 @@
+{
+  "name": "arbiter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "description": "Arbiter — internal AI QA platform. Phase 0 foundation: the sanitize -> ground -> generate -> validate -> gate guardrail pipeline.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "hello": "tsx packages/workflows/src/cli/hello.ts",
+    "migrate": "tsx packages/db/src/cli/migrate.ts",
+    "dev:api": "tsx watch apps/api/src/main.ts",
+    "build:api": "pnpm --filter @arbiter/api run build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "eval": "tsx evals/run.ts"
+  },
+  "devDependencies": {
+    "@arbiter/config": "workspace:*",
+    "@arbiter/core": "workspace:*",
+    "@arbiter/db": "workspace:*",
+    "@arbiter/guardrail": "workspace:*",
+    "@arbiter/llm": "workspace:*",
+    "@arbiter/sanitize": "workspace:*",
+    "@arbiter/telemetry": "workspace:*",
+    "@arbiter/workflows": "workspace:*",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "zod": "^3.25.0"
+  }
+}

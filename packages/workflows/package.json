@@ -1,0 +1,17 @@
+{
+  "name": "@arbiter/workflows",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@arbiter/config": "workspace:*",
+    "@arbiter/core": "workspace:*",
+    "@arbiter/db": "workspace:*",
+    "@arbiter/guardrail": "workspace:*",
+    "@arbiter/telemetry": "workspace:*",
+    "zod": "^3.25.0"
+  }
+}
