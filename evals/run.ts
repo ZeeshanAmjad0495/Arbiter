@@ -319,6 +319,53 @@ const CASES: EvalCase[] = [
     ],
     graders: [notNull, grounded, nonEmptyArray('impacts'), nonEmptyArray('affectedTests'), hasString('summary')],
   },
+  {
+    name: 'smoke-suite: minimal critical-path suite with explicit not-covered',
+    workflow: 'smoke-suite',
+    requirement: 'Design a smoke suite for the checkout release that includes loyalty-points redemption.',
+    context: [{ title: 'Checkout release', content: 'Critical paths: add to cart, checkout, pay, redeem loyalty points.' }],
+    graders: [notNull, nonEmptyArray('smokeTests'), nonEmptyArray('criticalPaths'), hasString('summary')],
+  },
+  {
+    name: 'regression-impact: grounded re-run set vs safe-to-skip',
+    workflow: 'regression-impact',
+    requirement: 'A change reworked the redemption discount math. Advise the regression scope.',
+    context: [
+      { title: 'Existing checkout tests', content: 'TC-1 valid redemption discount; TC-2 discount reflects amount; TC-40 retry idempotency; TC-9 legacy checkout smoke.' },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('testsToRerun'), hasString('changeSummary'), hasString('summary')],
+  },
+  {
+    name: 'data-quality-assertions: grounded columns + integrity checks',
+    workflow: 'data-quality-assertions',
+    requirement: 'Draft data-quality assertions for the redemptions table.',
+    context: [
+      {
+        title: 'redemptions table',
+        content: 'Table redemptions. Columns: redemption_id, member_id, points_redeemed, order_total, discount_applied, created_at.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('assertions'), nonEmptyArray('fieldsReferenced'), hasString('summary')],
+  },
+  {
+    name: 'migration-test-plan: phases + mandatory reconciliation + rollback',
+    workflow: 'migration-test-plan',
+    requirement: 'Plan testing for migrating 4.2M member rows to the new redemptions schema.',
+    context: [{ title: 'Migration context', content: 'Backfill 4.2M member rows; online cutover with a feature flag; nightly snapshot exists.' }],
+    graders: [notNull, nonEmptyArray('phases'), nonEmptyArray('reconciliation'), hasString('rollbackPlan')],
+  },
+  {
+    name: 'exec-quality-report: RAG status + key metrics + recommendations',
+    workflow: 'exec-quality-report',
+    requirement: 'Draft an executive quality report for the checkout release from the metrics below.',
+    context: [
+      {
+        title: 'Quality metrics',
+        content: 'Approval rate 92%. Reviewer-edit rate 18%. Grounding-violation rate 4%. 212/215 regression passed. Open: 1 minor bug; load test pending.',
+      },
+    ],
+    graders: [notNull, nonEmptyArray('keyMetrics'), nonEmptyArray('recommendations'), hasString('headline')],
+  },
 ];
 
 async function main(): Promise<void> {

@@ -87,9 +87,11 @@ Shipped as paste-in-context workflows (RAG will later auto-populate the corpus i
 - **Spec-Change Impact Analyzer** — old→new change → impacted requirement/test/endpoint ids (breaking/behavioral/additive) with actions; impacted ids grounded.
 - *Deferred:* Locale-aware sanitizer recognizers (component hardening) — see the deferred table.
 
-## Wave 6 — Broadening authoring + tracked deferrals (later)
+## Wave 6 — Broadening authoring + tracked deferrals *(core shipped ✓)*
 
-**Broadening authoring (medium ROI):** Smoke/Sanity Suite Designer · Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Regression Impact Advisor · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · DQ/DB-Assertion Drafter · Migration/ETL Test-Plan Generator · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter · Test Estimation Assistant · Executive Quality-Report Drafter.
+**Shipped ✓ (curated high-value subset):** Smoke/Sanity Suite Designer · Regression Impact Advisor (grounded re-run vs skip) · Data-Quality / DB-Assertion Drafter · Migration/ETL Test-Plan Generator (mandatory reconciliation + rollback) · Executive Quality-Report Drafter (pairs with the Metrics layer).
+
+**Remaining authoring tail (lower ROI, tracked):** Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter · Test Estimation Assistant — all fit the shipped registry pattern; add on demand.
 
 ### Deferred — hardening, infra & capability debt (tracked, not dropped)
 

@@ -1694,6 +1694,268 @@ const specChangeImpact = define<SpecChangeImpact>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Wave 6 — Broadening authoring (curated high-value subset)           *
+ * ------------------------------------------------------------------ */
+
+/* 22. Smoke/Sanity Suite Designer ----------------------------------- */
+
+const SmokeSuite = z.object({
+  summary: z.string(),
+  criticalPaths: z.array(z.string()),
+  smokeTests: z.array(
+    z.object({
+      name: z.string(),
+      area: z.string(),
+      steps: z.array(z.string()).min(1),
+      expectedResult: z.string(),
+      priority: z.enum(['high', 'critical']),
+    }),
+  ),
+  timeBudgetMinutes: z.number().int().positive(),
+  notCovered: z.array(z.string()),
+});
+export type SmokeSuite = z.infer<typeof SmokeSuite>;
+
+const smokeSuite = define<SmokeSuite>({
+  id: 'smoke-suite',
+  label: 'Smoke / Sanity Suite Designer',
+  description: 'Design a minimal critical-path smoke suite (high/critical only) with a time budget and an explicit not-covered list.',
+  artifactType: 'smoke_suite',
+  promptVersion: 'smoke-suite@v1',
+  defaultRiskTier: 'low',
+  inputNoun: 'Release / build to design a smoke suite for',
+  schema: SmokeSuite,
+  system: systemFor('smoke-suite'),
+  ui: {
+    requirementLabel: 'Release / build',
+    requirementPlaceholder: 'Describe the release and its critical user paths…',
+    sampleRequirement: 'Design a smoke suite for the checkout release that includes loyalty-points redemption.',
+    sampleContext: {
+      title: 'Checkout release',
+      content: 'Critical paths: add to cart, checkout, pay, redeem loyalty points. Endpoint: POST /v2/checkout/redeem.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} A 10-minute smoke suite proving the checkout + redemption critical path is alive before deeper testing.`,
+    criticalPaths: ['Add to cart → checkout → pay', 'Redeem loyalty points at checkout'],
+    smokeTests: [
+      { name: 'Checkout completes for a valid cart', area: 'checkout', steps: ['Add an item.', 'Check out.', 'Pay.'], expectedResult: 'Order is placed and confirmed.', priority: 'critical' },
+      { name: 'Points redemption applies a discount', area: 'loyalty', steps: ['At checkout, redeem points.'], expectedResult: 'order_total is reduced and discount_applied is shown.', priority: 'high' },
+    ],
+    timeBudgetMinutes: 10,
+    notCovered: ['Boundary/negative redemption cases (full regression, not smoke).', 'Cross-member authorization (security suite).'],
+  }),
+});
+
+/* 23. Regression Impact Advisor ------------------------------------- */
+
+const RegressionImpact = z.object({
+  summary: z.string(),
+  changeSummary: z.string(),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  impactedAreas: z.array(z.string()),
+  testsToRerun: z.array(z.object({ testId: z.string(), reason: z.string(), priority: z.enum(['low', 'medium', 'high']) })),
+  safeToSkip: z.array(z.string()),
+});
+export type RegressionImpact = z.infer<typeof RegressionImpact>;
+
+const regressionImpact = define<RegressionImpact>({
+  id: 'regression-impact',
+  label: 'Regression Impact Advisor',
+  description: 'Given a change, advise which existing tests to re-run (grounded test ids) vs. safely skip, with a risk level.',
+  artifactType: 'regression_impact',
+  promptVersion: 'regression-impact@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Change to assess for regression impact (attach the existing tests as context)',
+  schema: RegressionImpact,
+  system: systemFor('regression-impact'),
+  ui: {
+    requirementLabel: 'Change (+ existing tests in context)',
+    requirementPlaceholder: 'Describe the change and paste the existing test ids (TC-#) it may touch…',
+    sampleRequirement: 'A change reworked the redemption discount math. Advise the regression scope.',
+    sampleContext: {
+      title: 'Existing checkout tests',
+      content: 'TC-1 valid redemption discount; TC-2 discount reflects amount; TC-40 retry idempotency; TC-9 legacy checkout smoke (no redemption).',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>([...o.safeToSkip, ...o.testsToRerun.map((t) => t.testId)]);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} The discount-math change directly affects TC-1 and TC-2; TC-40 should be re-run for safety; TC-9 (no redemption) is safe to skip.`,
+    changeSummary: 'Redemption discount calculation was reworked.',
+    riskLevel: 'medium',
+    impactedAreas: ['Redemption discount math', 'Order total calculation'],
+    testsToRerun: [
+      { testId: 'TC-1', reason: 'Directly exercises the redemption discount.', priority: 'high' },
+      { testId: 'TC-2', reason: 'Asserts discount_applied reflects the redeemed amount.', priority: 'high' },
+      { testId: 'TC-40', reason: 'Retry idempotency could interact with the new math.', priority: 'medium' },
+    ],
+    safeToSkip: ['TC-9'],
+  }),
+});
+
+/* 24. Data-Quality / DB-Assertion Drafter --------------------------- */
+
+const DataQualityAssertions = z.object({
+  summary: z.string(),
+  assertions: z.array(
+    z.object({
+      column: z.string(),
+      check: z.enum(['not_null', 'unique', 'referential_integrity', 'range', 'format', 'enum_set', 'freshness', 'row_count']),
+      rule: z.string(),
+      severity: z.enum(['low', 'medium', 'high', 'critical']),
+    }),
+  ),
+  fieldsReferenced: z.array(z.string()),
+  coverageNotes: z.string(),
+});
+export type DataQualityAssertions = z.infer<typeof DataQualityAssertions>;
+
+const dataQualityAssertions = define<DataQualityAssertions>({
+  id: 'data-quality-assertions',
+  label: 'Data-Quality / DB-Assertion Drafter',
+  description: 'Draft data-quality assertions (not-null, unique, referential integrity, range, freshness) for a schema — columns grounded.',
+  artifactType: 'data_quality_assertions',
+  promptVersion: 'data-quality-assertions@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Table / pipeline to draft data-quality assertions for (attach the schema)',
+  schema: DataQualityAssertions,
+  system: systemFor('data-quality-assertions'),
+  ui: {
+    requirementLabel: 'Table / pipeline (+ schema in context)',
+    requirementPlaceholder: 'Paste the table/pipeline schema with column names…',
+    sampleRequirement: 'Draft data-quality assertions for the redemptions table.',
+    sampleContext: {
+      title: 'redemptions table',
+      content: 'Table redemptions. Columns: redemption_id (pk), member_id (fk), points_redeemed (int), order_total (money), discount_applied (money), created_at (timestamp).',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>([...o.fieldsReferenced, ...o.assertions.map((a) => a.column)]);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'field' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Integrity assertions for the redemptions table focused on keys, money columns, and freshness.`,
+    assertions: [
+      { column: 'redemption_id', check: 'unique', rule: 'redemption_id is unique and not null (primary key).', severity: 'critical' },
+      { column: 'member_id', check: 'referential_integrity', rule: 'member_id references an existing member.', severity: 'high' },
+      { column: 'points_redeemed', check: 'range', rule: 'points_redeemed >= 0.', severity: 'high' },
+      { column: 'discount_applied', check: 'range', rule: 'discount_applied >= 0 and <= order_total.', severity: 'high' },
+      { column: 'created_at', check: 'freshness', rule: 'created_at is within the expected load window.', severity: 'medium' },
+    ],
+    fieldsReferenced: ['redemption_id', 'member_id', 'points_redeemed', 'discount_applied', 'order_total', 'created_at'],
+    coverageNotes: 'Keys, money, and freshness covered; add an enum_set check if a status column is added.',
+  }),
+});
+
+/* 25. Migration / ETL Test-Plan Generator --------------------------- */
+
+const MigrationTestPlan = z.object({
+  summary: z.string(),
+  scope: z.string(),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  phases: z.array(
+    z.object({
+      phase: z.enum(['pre_migration', 'migration', 'post_migration', 'rollback']),
+      checks: z.array(z.string()).min(1),
+    }),
+  ),
+  reconciliation: z.array(z.string()),
+  rollbackPlan: z.string(),
+  signOffOwnedBy: z.string(),
+});
+export type MigrationTestPlan = z.infer<typeof MigrationTestPlan>;
+
+const migrationTestPlan = define<MigrationTestPlan>({
+  id: 'migration-test-plan',
+  label: 'Migration / ETL Test-Plan Generator',
+  description: 'Draft a phased migration test plan (pre/migrate/post/rollback) with mandatory reconciliation and a testable rollback plan.',
+  artifactType: 'migration_test_plan',
+  promptVersion: 'migration-test-plan@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Data migration / ETL cutover to plan testing for',
+  schema: MigrationTestPlan,
+  system: systemFor('migration-test-plan'),
+  ui: {
+    requirementLabel: 'Migration / ETL cutover',
+    requirementPlaceholder: 'Describe the migration (source/target, volumes, cutover approach)…',
+    sampleRequirement: 'Plan testing for migrating 4.2M member rows to the new redemptions schema.',
+    sampleContext: {
+      title: 'Migration context',
+      content: 'Backfill 4.2M member rows into the new redemptions table; online cutover with a feature flag; nightly snapshot exists.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Phased plan for the 4.2M-row backfill with row-count + checksum reconciliation and a rehearsed rollback.`,
+    scope: 'Backfill and cut over 4.2M member rows to the new redemptions schema.',
+    riskLevel: 'high',
+    phases: [
+      { phase: 'pre_migration', checks: ['Snapshot source; record source row count and checksums.', 'Validate the rollback path in staging.'] },
+      { phase: 'migration', checks: ['Run the backfill behind the feature flag.', 'Monitor error rate and lag during the load.'] },
+      { phase: 'post_migration', checks: ['Reconcile target vs source row counts and checksums.', 'Sample-verify money columns (points_redeemed, discount_applied).'] },
+      { phase: 'rollback', checks: ['Disable the flag and restore from snapshot if reconciliation fails.'] },
+    ],
+    reconciliation: ['Target row count equals source row count (4.2M).', 'Per-partition checksums match.', 'Random 1k-row sample matches source exactly.'],
+    rollbackPlan: 'Disable redemption_batch_enabled and restore the redemptions table from the pre-migration snapshot; re-run reconciliation after restore.',
+    signOffOwnedBy: 'Release owner / data lead (human)',
+  }),
+});
+
+/* 26. Executive Quality-Report Drafter ------------------------------ */
+
+const ExecQualityReport = z.object({
+  headline: z.string(),
+  overallStatus: z.enum(['green', 'yellow', 'red']),
+  summary: z.string(),
+  keyMetrics: z.array(z.object({ metric: z.string(), value: z.string(), trend: z.enum(['improving', 'stable', 'declining', 'unknown']) })),
+  risks: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  audience: z.string(),
+});
+export type ExecQualityReport = z.infer<typeof ExecQualityReport>;
+
+const execQualityReport = define<ExecQualityReport>({
+  id: 'exec-quality-report',
+  label: 'Executive Quality-Report Drafter',
+  description: 'Turn QA metrics and notes into an executive-audience report: headline, RAG status, key metrics with trends, risks, and recommendations.',
+  artifactType: 'exec_quality_report',
+  promptVersion: 'exec-quality-report@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'QA metrics / results / risks to summarize for leadership',
+  schema: ExecQualityReport,
+  system: systemFor('exec-quality-report'),
+  ui: {
+    requirementLabel: 'QA metrics / results (paste from Insights)',
+    requirementPlaceholder: 'Paste quality metrics, test results, and open risks…',
+    sampleRequirement: 'Draft an executive quality report for the checkout release from the metrics below.',
+    sampleContext: {
+      title: 'Quality metrics',
+      content: 'Approval rate 92% (up from 85%). Reviewer-edit rate 18%. Grounding-violation rate 4%. 212/215 regression passed. Open: 1 minor discount-formatting bug; redemption load test pending.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    headline: `${OFFLINE_NOTE} Checkout release is on track with one pending load test.`,
+    overallStatus: 'yellow',
+    summary: 'Quality is trending up (approval rate 92%, low grounding violations), regression is green, but the redemption load test is still pending and one minor bug is open.',
+    keyMetrics: [
+      { metric: 'Reviewer approval rate', value: '92%', trend: 'improving' },
+      { metric: 'Grounding-violation rate', value: '4%', trend: 'stable' },
+      { metric: 'Regression pass rate', value: '212/215', trend: 'stable' },
+    ],
+    risks: ['Redemption load test is not yet run — performance under the 4.2M-row backfill is unproven.', 'One minor discount-formatting bug is user-visible.'],
+    recommendations: ['Run the redemption load test before go-live.', 'Ship the formatting bug as a known issue with a fast-follow.'],
+    audience: 'Engineering & product leadership',
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -1719,6 +1981,11 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   uatScript,
   crossReqInconsistency,
   specChangeImpact,
+  smokeSuite,
+  regressionImpact,
+  dataQualityAssertions,
+  migrationTestPlan,
+  execQualityReport,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

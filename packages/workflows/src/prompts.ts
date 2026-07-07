@@ -408,6 +408,94 @@ export const PROMPT_TEMPLATES: Record<string, PromptTemplate> = {
       origin: 'A20 — Spec-Change Impact',
     },
   },
+  'smoke-suite': {
+    id: 'smoke-suite',
+    version: 'smoke-suite@v1',
+    components: {
+      role: 'You are Arbiter, designing a minimal smoke/sanity suite for a release.',
+      context: 'You are given a feature/release plus optional context. You pick the few critical-path checks that must pass before deeper testing.',
+      instruction:
+        'Identify the critical paths and design a SMALL smoke suite (high/critical only) that proves the build is worth testing further: each check with area, steps, and expected result. State a time budget and explicitly what is NOT in smoke scope.',
+      constraints: [
+        'Keep it minimal — smoke proves "not broken", it does not cover everything. Ruthlessly exclude non-critical checks.',
+        'State what is deliberately out of smoke scope so the suite is not mistaken for full coverage.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the SmokeSuite schema.',
+      origin: 'A21 — Smoke/Sanity Suite',
+    },
+  },
+  'regression-impact': {
+    id: 'regression-impact',
+    version: 'regression-impact@v1',
+    components: {
+      role: 'You are Arbiter, advising which existing tests to re-run for a change (regression impact analysis).',
+      context: 'You are given a change plus the existing tests/areas it may touch (with ids, e.g. TC-1) in the context.',
+      instruction:
+        'Given the change, identify the impacted areas and the specific tests to re-run (each with a reason and priority), give an overall risk level, and list the tests that are safe to skip. Base the re-run set on the change, not a blanket "run everything".',
+      constraints: [
+        'Every test id (to re-run or to skip) must literally appear in the provided context — never invent a TC-#.',
+        GROUNDING_CONSTRAINT,
+        'Justify skips: only mark a test safe-to-skip if the change plausibly cannot affect it.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the RegressionImpact schema.',
+      origin: 'A22 — Regression Impact',
+    },
+  },
+  'data-quality-assertions': {
+    id: 'data-quality-assertions',
+    version: 'data-quality-assertions@v1',
+    components: {
+      role: 'You are Arbiter, drafting data-quality / database assertions for a table or pipeline.',
+      context: 'You are given a schema / table / pipeline definition (with column/field names) in the context.',
+      instruction:
+        'Draft data-quality assertions: for each relevant column, the check type (not-null, unique, referential integrity, range, format, enum set, freshness, row count) with a concrete rule and a severity. Note coverage and list the fields referenced.',
+      constraints: [
+        'Reference ONLY columns/fields that appear in the provided schema — never invent a column.',
+        GROUNDING_CONSTRAINT,
+        'Prefer high-value integrity checks (keys, money, PII columns) over trivial ones.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the DataQualityAssertions schema.',
+      origin: 'A23 — Data-Quality / DB Assertions',
+    },
+  },
+  'migration-test-plan': {
+    id: 'migration-test-plan',
+    version: 'migration-test-plan@v1',
+    components: {
+      role: 'You are Arbiter, drafting a test plan for a data migration / ETL cutover.',
+      context: 'You are given a migration/ETL description plus optional context (source/target schema, volumes).',
+      instruction:
+        'Draft a migration test plan across phases (pre-migration, migration, post-migration, rollback): the checks per phase, the reconciliation steps (row counts, checksums, sampling), a rollback plan, and an overall risk level. Record who owns sign-off.',
+      constraints: [
+        'Reconciliation is mandatory: include row-count and integrity checks that prove no data was lost or corrupted.',
+        'A rollback plan is mandatory and must be testable before cutover.',
+        'Cutover sign-off is HUMAN-OWNED; Arbiter drafts the plan, it does not authorize the migration.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the MigrationTestPlan schema.',
+      origin: 'A24 — Migration / ETL Test Plan',
+    },
+  },
+  'exec-quality-report': {
+    id: 'exec-quality-report',
+    version: 'exec-quality-report@v1',
+    components: {
+      role: 'You are Arbiter, drafting an executive-audience quality report from QA metrics and notes.',
+      context: 'You are given quality metrics, test results, open risks, and notes in the context. You summarize for leadership.',
+      instruction:
+        'Draft an executive quality report: a one-line headline, an overall status (green/yellow/red), a short summary, the key metrics with a trend each, the top risks, and clear recommendations. Name the audience.',
+      constraints: [
+        'Base every metric value on the provided data — never invent or round numbers that are not given.',
+        'Be honest about risk: do not present a red or yellow situation as green.',
+        'Write for a non-technical executive: outcomes and decisions, not test-level detail.',
+      ],
+      outputFormat: 'A single JSON object conforming to the ExecQualityReport schema.',
+      origin: 'A25 — Executive Quality Report',
+    },
+  },
 };
 
 export function listPromptTemplates(): PromptTemplate[] {
