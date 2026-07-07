@@ -55,9 +55,29 @@ API Test Generator (+ Postman diff-plan) · Contract Drift / Version-Diff Impact
 
 Exploratory Charter Generator + session structuring · UAT Acceptance-Script Generator + sign-off · Cross-Requirement Inconsistency Checker (cite-two-sources guard) · Spec-Change Impact Analyzer · Locale-aware sanitizer recognizers *(component hardening)*.
 
-## Wave 6 — Broadening authoring (medium ROI, later)
+## Wave 6 — Broadening authoring + tracked deferrals (later)
 
-Smoke/Sanity Suite Designer · Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Regression Impact Advisor · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · DQ/DB-Assertion Drafter · Migration/ETL Test-Plan Generator · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter · Test Estimation Assistant · Executive Quality-Report Drafter.
+**Broadening authoring (medium ROI):** Smoke/Sanity Suite Designer · Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Regression Impact Advisor · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · DQ/DB-Assertion Drafter · Migration/ETL Test-Plan Generator · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter · Test Estimation Assistant · Executive Quality-Report Drafter.
+
+### Deferred — hardening, infra & capability debt (tracked, not dropped)
+
+Everything consciously deferred during Waves 0–1, with why it's safe today and when it's needed. None weaken the invariants; each is a known, bounded follow-up.
+
+| Item | Status today | Pull in when |
+|---|---|---|
+| **De-mask store tenant-scoping** (project-scoped `resolve`) + **Postgres-backed, row-authorized de-mask store** | safe — `resolve` is unused in the prod path; store is process-local, AES-GCM in RAM | before any de-mask rehydration / real multi-tenant (with WriteGate re-hydration) |
+| **Real OTLP → Langfuse exporter** | in-memory, OTel-shaped tracer behind `createTracer()` | when observability / Langfuse is stood up |
+| **Server-side Presidio custom recognizers** | app-side custom recognizers cover member IDs/secrets/internal URLs in both engines | when centralizing PHI-coverage tuning |
+| **Locale-aware sanitizer recognizers** (also Wave 5 #26) | English/US-format PII patterns only | before non-English member data flows |
+| **Kimi read-failure distinct logging** | body-read failure swallowed to `''` | minor observability polish |
+| **Container image size optimization** | builds & runs; CI-verified, not size-tuned | pre-deploy |
+| **pgvector migration** for dense retrieval | Postgres FTS + app-side cosine over `real[]` behind the retrieval interface | at scale (drop-in behind the interface) |
+| **Streaming on the LLM path** | non-streaming (spinner); Kimi thinking is slow | UX polish (biggest win while thinking is on) |
+| **LiteLLM gateway + 2nd LLM provider** (judge independence) | Anthropic / Kimi / stub only | Eval Workbench judge calibration |
+| **Expand eval suite → 20–30 cases/workflow** | ~20 code-based checks across 6 cases (CI gate seed) | ongoing, per workflow |
+| **Frontend a11y + design pass** (`ecc:a11y-architect` + Lighthouse) | functional, not a11y-audited | a UI-polish milestone |
+| **Full LLM Eval Workbench** (judge calibration, Ragas, statistical gating, garak/PyRIT) | not built (was the original Phase 4) | its own track after Waves 3–4 (billable client-facing service) |
+| **Gated Defect Write-Back → Jira** (Wave 1 #3) | deferred by the read-only-Jira constraint | **only** against a sandbox Jira / GitHub / TestRail, with explicit per-target authorization — never the connected workspace |
 
 ## Delegated permanently (never built)
 
