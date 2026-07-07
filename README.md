@@ -20,7 +20,7 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Seven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Eleven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
@@ -29,6 +29,10 @@ Seven QA/QE workflows, all running through the pipeline above, each with paste-i
 5. **Release Readiness Summarizer** — a decision-ready summary with a risk table and an explicitly **human-owned** Go / Go-with-risk / No-Go, **grounded in structured release signals** (test-run counts, open-defect counts, eval pass rate) so cited figures can't be invented.
 6. **NFR Completeness Analyzer** *(Wave 1)* — audits a requirement across 15 non-functional categories (performance, security, a11y, i18n, reliability, **data integrity**, …) and drafts a testable acceptance criterion for each gap.
 7. **Operational-Readiness Gate** *(Wave 1)* — a grounded production-readiness checklist beyond test results (SLOs, runbook, alerts, rollback, on-call, DR, kill-switch, dependencies) with a **human-owned** Go / No-Go.
+8. **Test Strategy Generator** *(Wave 2)* — a risk-based strategy (scope, risk areas, test levels + automation split, environments, entry/exit) that a Test Plan traces to.
+9. **Test Plan Generator** *(Wave 2)* — an executable plan whose **every scenario traces to a grounded strategy risk-area / requirement id**.
+10. **Requirements Traceability & Coverage Matrix** *(Wave 2)* — **id-aware** links from requirement ids to covering test ids, surfacing uncovered requirements and orphan tests; invented ids block export.
+11. **Compliance Control-Mapping & Evidence Pack** *(Wave 2)* — maps framework controls (HIPAA/SOC 2) to a feature (satisfied vs. gap, required evidence, verification), control ids grounded, **human-attested**.
 
 Plus the platform features around them:
 
@@ -99,7 +103,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 7 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 11 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -114,9 +118,9 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Wave 0 + Wave 1):** the governed workbench — guardrail spine, seven workflows, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, the Operational-Readiness Gate, and grounded Release-Readiness inputs.
+**Shipped (Waves 0–2):** the governed workbench — guardrail spine, **eleven workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
 
-The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 2** (Test Strategy & Plan Generators, Requirements Traceability & Coverage Matrix, Compliance Control-Mapping, the Quality Metrics Aggregation Layer).
+The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 3** (CI failure triage, flaky-test quarantine advisor, log/trace triage + incident postmortem, read-only observability connectors).
 
 **Read-only Jira — enforced in code:** Arbiter never writes to the connected Jira workspace; every Jira request refuses any method but GET/HEAD before it is sent.
 

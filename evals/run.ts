@@ -156,6 +156,58 @@ const CASES: EvalCase[] = [
       hasString('decisionOwnedBy'),
     ],
   },
+  {
+    name: 'test-strategy: risk areas grounded, out-of-scope explicit',
+    workflow: 'test-strategy',
+    requirement: 'EPIC-4477: auto-adjudicate outpatient claims via POST /v4/claims/adjudicate; low confidence_score claims route to manual review (REQ-8821).',
+    context: [
+      {
+        title: 'Claims adjudication context',
+        content:
+          'EPIC-4477 auto-adjudication. Endpoint: POST /v4/claims/adjudicate. Fields: claim_id, member_responsibility, payable_amount, coverage_status, confidence_score. REQ-8821: low confidence_score claims must route to manual review.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('riskAreas'), nonEmptyArray('outOfScope'), scoreInRange('riskCoverageScore'), hasString('approvalOwnedBy')],
+  },
+  {
+    name: 'test-plan: every scenario traces to a grounded strategy risk area',
+    workflow: 'test-plan',
+    requirement: 'Draft a test plan for loyalty-points redemption that traces each suite to the A6 strategy risk areas.',
+    context: [
+      {
+        title: 'A6 Test Strategy — Loyalty Points Redemption',
+        content:
+          'Endpoint: POST /v2/checkout/redeem. Risk areas: RA-1 transactional integrity; RA-2 authorization; RA-3 dependency reliability; RA-4 performance. Requirements: REQ-101 points_redeemed deducted; REQ-102 discount_applied reflects the redeemed amount.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('scenarios'), nonEmptyArray('objectives'), scoreInRange('coverageScore'), hasString('approvalOwnedBy')],
+  },
+  {
+    name: 'traceability-matrix: id-aware links + uncovered/orphan surfaced, grounded',
+    workflow: 'traceability-matrix',
+    requirement: 'Build the traceability matrix for the loyalty-redemption requirements and tests below.',
+    context: [
+      {
+        title: 'Requirements & tests',
+        content:
+          'Requirements: REQ-101 points_redeemed deducted; REQ-102 discount_applied reflects amount; REQ-103 redemption rejected when points_balance insufficient. Tests: TC-1 valid redemption; TC-2 discount reflects amount; TC-9 legacy checkout smoke.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('matrix'), scoreInRange('coverageScore'), hasString('summary')],
+  },
+  {
+    name: 'compliance-mapping: control ids grounded, human-attested',
+    workflow: 'compliance-mapping',
+    requirement: 'Map the HIPAA Security Rule technical safeguards to the claims-adjudication feature.',
+    context: [
+      {
+        title: 'HIPAA Security Rule (excerpt)',
+        content:
+          'HIPAA Security Rule. Technical safeguards: 164.312(a)(1) Access control; 164.312(b) Audit controls; 164.312(c)(1) Integrity; 164.312(e)(1) Transmission security.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('controls'), hasString('summary'), hasString('attestationOwnedBy')],
+  },
 ];
 
 async function main(): Promise<void> {

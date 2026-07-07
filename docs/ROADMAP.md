@@ -49,9 +49,15 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 - **HTTP-level isolation test** — `tests/projects.test.ts` proves one project cannot read another's review queue or artifacts.
 - *Deferred:* per-**user** authorization of which projects a caller may select (arrives with SSO); per-project connector config (Jira/OpenAPI moving off global env) lands with the Wave 2 knowledge/connector substrate.
 
-## Wave 2 — Core QE differentiators (the QA→QE leap)
+## Wave 2 — Core QE differentiators (the QA→QE leap) *(shipped ✓)*
 
-Test Strategy Generator · Test Plan Generator (traces to strategy) · Requirements Traceability & Coverage Matrix (id-aware validator) · Compliance Control-Mapping & Evidence Pack (healthcare/PHI differentiator) · Quality Metrics Aggregation Layer *(substrate)*.
+- **Test Strategy Generator** — risk-based strategy (scope/out-of-scope, risk areas, test levels + automation split, environments, entry/exit); the umbrella a Test Plan traces to. Grounds an explicit `tracedIds` list (not scraped prose) so invented ids block export.
+- **Test Plan Generator** — executable plan where **every scenario's `coversRiskArea` is grounded** against the strategy/requirements in context → enforced plan→strategy traceability.
+- **Requirements Traceability & Coverage Matrix** — **id-aware**: requirement ids ↔ covering test ids, uncovered requirements + orphan tests; every id is grounding-checked.
+- **Compliance Control-Mapping & Evidence Pack** — framework controls (HIPAA/SOC 2) → satisfied/gap + required evidence + verification; control ids grounded; overall status **human-attested** (a compliance officer signs off).
+- **Quality Metrics Aggregation Layer** *(substrate)* — deterministic, read-only aggregation over captured signals (status/risk distributions, approval rate, reviewer-edit rate, median dwell, grounding-violation rate) per project; `GET /v1/metrics` + the `/insights` dashboard. Backed by `reviews.listByProject` / `audit.listByProject`.
+
+*All four workflow designs went through an adversarial multi-agent design pass; the two the pass could not finish were authored in-house and adversarially self-reviewed (which caught + fixed the test-strategy prose-scraping over-block).*
 
 ## Wave 3 — CI reliability & operational learning
 

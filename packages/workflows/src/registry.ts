@@ -747,6 +747,328 @@ const operationalReadinessGate = define<OperationalReadiness>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Wave 2 — QA→QE differentiators (grounded, gated, traced)            *
+ * ------------------------------------------------------------------ */
+
+// Requirement/epic/risk/test ids (EPIC-4477, REQ-101, RA-1, TC-9) and versioned
+// endpoints (/v4/claims/adjudicate). Extracted from generated free text so an
+// invented id/endpoint fails grounding and blocks export.
+const TRACE_ID_RE = /\b[A-Z][A-Z0-9]{1,}-\d+\b/g;
+const ENDPOINT_RE = /\/v\d+\/[A-Za-z0-9/_-]+/g;
+
+function idClaimsFrom(texts: Array<string | undefined>): GroundingClaimInput[] {
+  const found = new Set<string>();
+  for (const text of texts) {
+    if (!text) continue;
+    for (const m of text.matchAll(TRACE_ID_RE)) found.add(m[0]);
+    for (const m of text.matchAll(ENDPOINT_RE)) found.add(m[0]);
+  }
+  return [...found].map((value) => ({ kind: 'requirement' as const, value }));
+}
+
+/* 8. Test Strategy Generator ---------------------------------------- */
+
+const TestStrategy = z.object({
+  strategySummary: z.string(),
+  riskPosture: z.enum(['low', 'moderate', 'elevated', 'high']),
+  riskCoverageScore: z.number().min(0).max(100),
+  inScope: z.array(z.string()),
+  outOfScope: z.array(z.string()),
+  riskAreas: z.array(
+    z.object({
+      area: z.string(),
+      likelihood: z.enum(['low', 'medium', 'high']),
+      impact: z.enum(['low', 'medium', 'high']),
+      mitigation: z.string(),
+    }),
+  ),
+  testLevels: z.array(
+    z.object({
+      level: z.enum(['unit', 'integration', 'api', 'contract', 'system', 'e2e', 'performance', 'security', 'accessibility', 'regression', 'exploratory']),
+      applicability: z.enum(['required', 'recommended', 'optional']),
+      automation: z.enum(['automated', 'manual', 'hybrid']),
+      focus: z.string(),
+    }),
+  ),
+  environments: z.array(z.object({ name: z.string(), purpose: z.string(), testDataNeeds: z.string() })),
+  entryCriteria: z.array(z.string()),
+  exitCriteria: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  dependencies: z.array(z.string()),
+  /** The exact requirement/epic ids and endpoints from context the strategy relies on — grounded. */
+  tracedIds: z.array(z.string()),
+  approvalOwnedBy: z.string(),
+  signOffRequired: z.enum(['required', 'not_required']),
+});
+export type TestStrategy = z.infer<typeof TestStrategy>;
+
+const testStrategy = define<TestStrategy>({
+  id: 'test-strategy',
+  label: 'Test Strategy Generator',
+  description: 'Draft a risk-based test strategy (scope, risk areas, test levels + automation split, environments, entry/exit) that a Test Plan traces to.',
+  artifactType: 'test_strategy',
+  promptVersion: 'test-strategy@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Feature / epic / release to build a test strategy for',
+  schema: TestStrategy,
+  system: systemFor('test-strategy'),
+  ui: {
+    requirementLabel: 'Feature / epic / release',
+    requirementPlaceholder: 'Describe the feature/epic and paste requirement ids, endpoints, and dependencies…',
+    sampleRequirement:
+      'EPIC-4477: auto-adjudicate outpatient claims via POST /v4/claims/adjudicate, computing member_responsibility and payable_amount; low confidence_score claims route to manual review (REQ-8821).',
+    sampleContext: {
+      title: 'Claims adjudication context',
+      content:
+        'EPIC-4477 auto-adjudication. Endpoint: POST /v4/claims/adjudicate. Fields: claim_id, member_responsibility, payable_amount, allowed_amount, billed_amount, coverage_status, plan_id, procedure_code, confidence_score, adjudication_status. REQ-8821: low confidence_score claims must route to manual review.',
+    },
+    outputView: 'generic',
+  },
+  // Ground the explicit tracedIds the model relies on (not scraped prose — that
+  // would false-block on incidental tokens like "Q1-2024").
+  extractClaims: (o) => o.tracedIds.filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value })),
+  stub: () => ({
+    strategySummary: `${OFFLINE_NOTE} Risk-based strategy for EPIC-4477 auto-adjudication via POST /v4/claims/adjudicate; dominant risk is member_responsibility / payable_amount math and low confidence_score claims routing to manual review per REQ-8821.`,
+    riskPosture: 'elevated',
+    riskCoverageScore: 68,
+    inScope: [
+      'Auto-adjudication through POST /v4/claims/adjudicate.',
+      'member_responsibility / payable_amount math across coverage tiers.',
+      'Routing low confidence_score claims to manual review (REQ-8821).',
+    ],
+    outOfScope: ['Inpatient and pharmacy claims (separate epics).', 'Payments ledger settlement.'],
+    riskAreas: [
+      { area: 'Incorrect member_responsibility / payable_amount math.', likelihood: 'high', impact: 'high', mitigation: 'Golden-file api tests over allowed_amount / billed_amount fixtures per coverage tier.' },
+      { area: 'Low confidence_score claims not routing to manual review (REQ-8821).', likelihood: 'medium', impact: 'high', mitigation: 'Boundary tests at the confidence threshold.' },
+      { area: 'Stale coverage_status from the eligibility service.', likelihood: 'medium', impact: 'high', mitigation: 'Contract + dependency-timeout tests that hold the claim for review.' },
+    ],
+    testLevels: [
+      { level: 'api', applicability: 'required', automation: 'automated', focus: 'Adjudication math and routing on POST /v4/claims/adjudicate.' },
+      { level: 'contract', applicability: 'required', automation: 'automated', focus: 'Eligibility service and plan-rules engine contracts.' },
+      { level: 'security', applicability: 'recommended', automation: 'hybrid', focus: 'PHI handling and authorization on claim reads.' },
+    ],
+    environments: [{ name: 'staging', purpose: 'End-to-end adjudication with masked data.', testDataNeeds: 'Synthetic claims across coverage tiers; no real PHI.' }],
+    entryCriteria: ['EPIC-4477 requirements approved; the /v4/claims/adjudicate contract is published.'],
+    exitCriteria: ['All required api + contract suites pass; no high-risk area left uncovered.'],
+    assumptions: ['The confidence_score threshold is provided by product before test design.'],
+    dependencies: ['Eligibility service and plan-rules engine available in staging.'],
+    tracedIds: ['EPIC-4477', 'REQ-8821', '/v4/claims/adjudicate'],
+    approvalOwnedBy: 'QA lead (human)',
+    signOffRequired: 'required',
+  }),
+});
+
+/* 9. Test Plan Generator (traces to strategy) ----------------------- */
+
+const TestPlan = z.object({
+  summary: z.string(),
+  objectives: z.array(z.string()),
+  testItems: z.array(z.string()),
+  scenarios: z.array(
+    z.object({
+      suite: z.string(),
+      scenario: z.string(),
+      /** The strategy risk-area / requirement id this scenario traces to (grounded). */
+      coversRiskArea: z.string(),
+      testType: z.enum(['functional', 'integration', 'e2e', 'api', 'security', 'performance', 'regression', 'accessibility', 'data_integrity']),
+      priority: z.enum(['low', 'medium', 'high', 'critical']),
+      rationale: z.string(),
+    }),
+  ),
+  entryCriteria: z.array(z.string()),
+  exitCriteria: z.array(z.string()),
+  suspensionCriteria: z.array(z.string()),
+  resumptionCriteria: z.array(z.string()),
+  roles: z.array(z.object({ role: z.string(), responsibility: z.string() })),
+  resourceAssumptions: z.array(z.string()),
+  scheduleAssumptions: z.array(z.string()),
+  deliverables: z.array(z.string()),
+  coverageScore: z.number().min(0).max(100),
+  approvalOwnedBy: z.string(),
+  signOffRequired: z.enum(['required', 'not_required']),
+});
+export type TestPlan = z.infer<typeof TestPlan>;
+
+const testPlan = define<TestPlan>({
+  id: 'test-plan',
+  label: 'Test Plan Generator',
+  description: 'Draft an executable test plan whose every scenario traces to a strategy risk area or requirement id (grounded).',
+  artifactType: 'test_plan',
+  promptVersion: 'test-plan@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Feature / requirement to plan testing for (attach the test strategy as context)',
+  schema: TestPlan,
+  system: systemFor('test-plan'),
+  ui: {
+    requirementLabel: 'Feature / requirement (+ strategy in context)',
+    requirementPlaceholder: 'Describe the feature and paste the A6 strategy (risk areas RA-#, requirements REQ-#)…',
+    sampleRequirement:
+      'As a member, I can redeem loyalty points at checkout for a discount; points are deducted and the order total updates. Draft a test plan that traces each suite to the A6 strategy risk areas.',
+    sampleContext: {
+      title: 'A6 Test Strategy — Loyalty Points Redemption',
+      content:
+        'Endpoint: POST /v2/checkout/redeem. Fields: member_id, points_balance, points_redeemed, order_total, discount_applied. Risk areas: RA-1 transactional integrity (double-redeem / partial write); RA-2 authorization (a member may only redeem their own points_balance); RA-3 dependency reliability (points service unavailable at checkout); RA-4 performance (p95 latency under load). Requirements: REQ-101 points_redeemed deducted and order_total updates; REQ-102 discount_applied reflects the redeemed amount.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => idClaimsFrom(o.scenarios.map((s) => s.coversRiskArea)),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Executable plan for loyalty redemption tracing to the A6 strategy; every suite maps to a risk area. RA-4 performance is only partially covered (needs a load environment).`,
+    objectives: ['Verify points-redemption correctness, authorization, and resilience at checkout.'],
+    testItems: ['POST /v2/checkout/redeem', 'points_balance / points_redeemed / order_total / discount_applied'],
+    scenarios: [
+      { suite: 'Transactional integrity', scenario: 'A retry after a failed order does not double-deduct points_redeemed.', coversRiskArea: 'RA-1', testType: 'data_integrity', priority: 'critical', rationale: 'REQ-101 correctness under partial failure.' },
+      { suite: 'Authorization', scenario: 'Member A cannot redeem member B’s points_balance.', coversRiskArea: 'RA-2', testType: 'security', priority: 'high', rationale: 'Object-level authorization.' },
+      { suite: 'Dependency reliability', scenario: 'A points-service timeout degrades gracefully without blocking checkout.', coversRiskArea: 'RA-3', testType: 'integration', priority: 'high', rationale: 'Resilience on dependency outage.' },
+      { suite: 'Discount correctness', scenario: 'discount_applied reflects points_redeemed.', coversRiskArea: 'REQ-102', testType: 'functional', priority: 'high', rationale: 'REQ-102.' },
+    ],
+    entryCriteria: ['A6 strategy approved; POST /v2/checkout/redeem available in staging.'],
+    exitCriteria: ['All critical/high scenarios pass; RA-1 and RA-2 fully covered.'],
+    suspensionCriteria: ['The redemption endpoint is unavailable in the test environment.'],
+    resumptionCriteria: ['The endpoint is restored and a smoke redemption passes.'],
+    roles: [
+      { role: 'QA engineer', responsibility: 'Author and run the redemption suites.' },
+      { role: 'QA lead', responsibility: 'Approve the plan and own sign-off.' },
+    ],
+    resourceAssumptions: ['One shared staging environment with the points service.'],
+    scheduleAssumptions: ['Two days for suite authoring and execution.'],
+    deliverables: ['Executed suites, a defect list, and a coverage-vs-risk-area report.'],
+    coverageScore: 80,
+    approvalOwnedBy: 'QA lead (human)',
+    signOffRequired: 'required',
+  }),
+});
+
+/* 10. Requirements Traceability & Coverage Matrix ------------------- */
+
+const TraceabilityMatrix = z.object({
+  coverageScore: z.number().min(0).max(100),
+  matrix: z.array(
+    z.object({
+      requirementId: z.string(),
+      requirementSummary: z.string(),
+      coveringTestIds: z.array(z.string()),
+      status: z.enum(['covered', 'partial', 'uncovered']),
+      notes: z.string(),
+    }),
+  ),
+  uncoveredRequirements: z.array(z.string()),
+  orphanTests: z.array(z.string()),
+  summary: z.string(),
+});
+export type TraceabilityMatrix = z.infer<typeof TraceabilityMatrix>;
+
+const traceabilityMatrix = define<TraceabilityMatrix>({
+  id: 'traceability-matrix',
+  label: 'Requirements Traceability & Coverage Matrix',
+  description: 'Link requirement ids to covering test ids, expose uncovered requirements and orphan tests — id-aware and grounded.',
+  artifactType: 'traceability_matrix',
+  promptVersion: 'traceability-matrix@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Requirements + tests to trace (paste ids)',
+  schema: TraceabilityMatrix,
+  system: systemFor('traceability-matrix'),
+  ui: {
+    requirementLabel: 'Requirements + tests',
+    requirementPlaceholder: 'Paste requirement ids (REQ-#) and test ids (TC-#) with short descriptions…',
+    sampleRequirement: 'Build the traceability matrix for the loyalty-redemption requirements and tests below.',
+    sampleContext: {
+      title: 'Requirements & tests',
+      content:
+        'Requirements: REQ-101 points_redeemed deducted and order_total updates; REQ-102 discount_applied reflects the redeemed amount; REQ-103 redemption rejected when points_balance is insufficient. Tests: TC-1 valid redemption; TC-2 discount reflects amount; TC-9 legacy checkout smoke (no linked requirement).',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>();
+    for (const row of o.matrix) {
+      ids.add(row.requirementId);
+      for (const t of row.coveringTestIds) ids.add(t);
+    }
+    for (const r of o.uncoveredRequirements) ids.add(r);
+    for (const t of o.orphanTests) ids.add(t);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value }));
+  },
+  stub: () => ({
+    coverageScore: 67,
+    matrix: [
+      { requirementId: 'REQ-101', requirementSummary: 'points_redeemed deducted and order_total updates.', coveringTestIds: ['TC-1'], status: 'covered', notes: 'Happy-path redemption covered.' },
+      { requirementId: 'REQ-102', requirementSummary: 'discount_applied reflects the redeemed amount.', coveringTestIds: ['TC-2'], status: 'covered', notes: 'Discount amount asserted.' },
+      { requirementId: 'REQ-103', requirementSummary: 'Redemption rejected when points_balance is insufficient.', coveringTestIds: [], status: 'uncovered', notes: 'No negative test exists for insufficient balance.' },
+    ],
+    uncoveredRequirements: ['REQ-103'],
+    orphanTests: ['TC-9'],
+    summary: `${OFFLINE_NOTE} 2 of 3 requirements covered; REQ-103 (insufficient balance) is uncovered and TC-9 traces to no requirement.`,
+  }),
+});
+
+/* 11. Compliance Control-Mapping & Evidence Pack -------------------- */
+
+const ComplianceMapping = z.object({
+  summary: z.string(),
+  framework: z.string(),
+  /** Human-owned draft — a compliance officer decides; Arbiter never attests. */
+  overallStatus: z.enum(['ready', 'gaps', 'not_assessed']),
+  controls: z.array(
+    z.object({
+      controlId: z.string(),
+      title: z.string(),
+      applicability: z.enum(['applicable', 'not_applicable']),
+      status: z.enum(['met', 'partial', 'gap', 'not_applicable']),
+      howSatisfied: z.string(),
+      requiredEvidence: z.string(),
+      verification: z.string(),
+    }),
+  ),
+  gaps: z.array(z.string()),
+  attestationOwnedBy: z.string(),
+  signOffRequired: z.enum(['required', 'not_required']),
+});
+export type ComplianceMapping = z.infer<typeof ComplianceMapping>;
+
+const complianceMapping = define<ComplianceMapping>({
+  id: 'compliance-mapping',
+  label: 'Compliance Control-Mapping & Evidence Pack',
+  description: 'Map framework controls (HIPAA/SOC 2) to a feature: satisfied vs. gap, required evidence, and verification — control ids grounded, human-attested.',
+  artifactType: 'compliance_mapping',
+  promptVersion: 'compliance-mapping@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Feature to map against a compliance framework (paste the framework controls)',
+  schema: ComplianceMapping,
+  system: systemFor('compliance-mapping'),
+  ui: {
+    requirementLabel: 'Feature (+ framework controls in context)',
+    requirementPlaceholder: 'Describe the feature and paste the framework controls (e.g. HIPAA 164.312 safeguards)…',
+    sampleRequirement: 'Map the HIPAA Security Rule technical safeguards to the claims-adjudication feature.',
+    sampleContext: {
+      title: 'HIPAA Security Rule (excerpt)',
+      content:
+        'HIPAA Security Rule. Technical safeguards: 164.312(a)(1) Access control; 164.312(b) Audit controls; 164.312(c)(1) Integrity; 164.312(e)(1) Transmission security. Administrative: 164.308(a)(1) Security management / risk analysis.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>();
+    for (const c of o.controls) ids.add(c.controlId);
+    for (const g of o.gaps) ids.add(g);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'entity' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} HIPAA Security Rule mapping for the claims-adjudication feature; access control and audit controls are met, transmission security is a partial gap.`,
+    framework: 'HIPAA Security Rule',
+    overallStatus: 'gaps',
+    controls: [
+      { controlId: '164.312(a)(1)', title: 'Access control', applicability: 'applicable', status: 'met', howSatisfied: 'Role-based access to claim_id reads with least-privilege service accounts.', requiredEvidence: 'IAM policy export + access-review log.', verification: 'Authorization test: a member cannot read another member’s claim.' },
+      { controlId: '164.312(b)', title: 'Audit controls', applicability: 'applicable', status: 'met', howSatisfied: 'Append-only audit trail records every adjudication decision.', requiredEvidence: 'Audit-event sample for a run.', verification: 'Assert an audit event is written per adjudication.' },
+      { controlId: '164.312(e)(1)', title: 'Transmission security', applicability: 'applicable', status: 'partial', howSatisfied: 'TLS in transit; at-rest encryption for the eligibility callback is not yet confirmed.', requiredEvidence: 'TLS config + at-rest encryption attestation.', verification: 'Scan the eligibility callback for plaintext PHI.' },
+    ],
+    gaps: ['164.312(e)(1)'],
+    attestationOwnedBy: 'Compliance officer (human)',
+    signOffRequired: 'required',
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -758,6 +1080,10 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   releaseReadiness,
   nfrAnalyzer,
   operationalReadinessGate,
+  testStrategy,
+  testPlan,
+  traceabilityMatrix,
+  complianceMapping,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));
