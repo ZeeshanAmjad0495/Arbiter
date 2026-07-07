@@ -59,6 +59,32 @@ export const CUSTOM_RECOGNIZERS: readonly Recognizer[] = [
     pattern: /\bhttps?:\/\/[A-Za-z0-9.-]*(?:internal|corp|intranet|\.local|\.lan|localhost)[^\s"'<>]*/gi,
     score: 0.7,
   },
+  // --- Locale-aware PII (non-US member data). Well-anchored + validated to keep
+  // false positives low; mapped to OTHER where the US-centric taxonomy has no slot.
+  // These run in both engine paths, so coverage never depends on Presidio locale. ---
+  // E.164 international phone numbers (leading +, 8–15 digits).
+  {
+    type: 'PHONE_NUMBER',
+    pattern: /\+\d(?:[\s.-]?\d){7,14}\b/g,
+    score: 0.6,
+    validate: (m) => {
+      const d = m.replace(/\D/g, '');
+      return d.length >= 8 && d.length <= 15;
+    },
+  },
+  // IBAN (ISO 13616): 2-letter country + 2 check digits + up to 30 alphanumerics.
+  {
+    type: 'OTHER',
+    pattern: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b/g,
+    score: 0.75,
+    validate: (m) => /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(m.replace(/\s/g, '')),
+  },
+  // UK National Insurance Number (NINO) — standard prefix-letter exclusions.
+  {
+    type: 'OTHER',
+    pattern: /\b[ABCEGHJ-PRSTW-Z][ABCEGHJ-NPRSTW-Z]\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/g,
+    score: 0.8,
+  },
 ] as const;
 
 /** Standard PII recognizers used when Presidio is not available. */
