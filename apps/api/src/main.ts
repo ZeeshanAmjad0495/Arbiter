@@ -27,8 +27,9 @@ async function main(): Promise<void> {
   const app = buildServer({ engine, demoProjectId: project.id, demoActorId: actor.id });
 
   const port = config.env.ARBITER_API_PORT;
-  await app.listen({ port, host: '0.0.0.0' });
-  app.log.info(`Arbiter API listening on :${port} (persistence=${config.persistence}, llm=${config.llm})`);
+  const host = config.env.ARBITER_API_HOST;
+  await app.listen({ port, host });
+  app.log.info(`Arbiter API listening on ${host}:${port} (persistence=${config.persistence}, llm=${config.llm})`);
 }
 
 main().catch((error) => {

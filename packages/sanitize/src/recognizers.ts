@@ -44,6 +44,10 @@ export const CUSTOM_RECOGNIZERS: readonly Recognizer[] = [
   { type: 'API_KEY', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, score: 0.9 },
   { type: 'PASSWORD', pattern: /(?:password|passwd|pwd)\s*[:=]\s*(\S+)/gi, score: 0.85, group: 1 },
   { type: 'GENERIC_SECRET', pattern: /(?:secret|token|api[_-]?key)\s*[:=]\s*(\S+)/gi, score: 0.8, group: 1 },
+  // URL-embedded basic-auth credentials, e.g. postgresql://user:pass@host.
+  { type: 'GENERIC_SECRET', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/:@]+@/gi, score: 0.9 },
+  // Bearer / opaque authorization tokens.
+  { type: 'API_KEY', pattern: /\bBearer\s+[A-Za-z0-9._~+/-]{12,}={0,2}/g, score: 0.85 },
   // Domain identifiers.
   { type: 'MEMBER_ID', pattern: /\b(?:MEM|MBR|MEMBER)[-_]?[A-Z0-9]{5,}\b/gi, score: 0.7 },
   { type: 'MEMBER_ID', pattern: /\bmember(?:\s*id)?\s*[:#]\s*([A-Z0-9-]{5,})\b/gi, score: 0.75, group: 1 },

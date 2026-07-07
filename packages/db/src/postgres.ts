@@ -49,7 +49,15 @@ async function withProjectTx<T>(pool: PgPool, projectId: string, fn: (client: Po
 const iso = (value: Date | string): string => (value instanceof Date ? value.toISOString() : value);
 
 export function createPostgresRepositories(databaseUrl: string): RepositoryBundle {
-  const pool = new Pool({ connectionString: databaseUrl, max: 10 });
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 10,
+    // Fail fast instead of hanging forever when the pool is saturated or a
+    // transaction stalls (prevents a single stall from becoming an app-wide block).
+    connectionTimeoutMillis: 10_000,
+    statement_timeout: 30_000,
+    idle_in_transaction_session_timeout: 30_000,
+  });
 
   const projects: ProjectRepository = {
     async upsert(project) {
@@ -244,6 +252,9 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     },
   };
 
+  const ARTIFACT_COLS =
+    'id, project_id, workflow_run_id, type, status, risk_tier, content, prompt_version, model, created_by, created_at';
+
   return {
     kind: 'postgres',
     projects,
@@ -251,6 +262,35 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     artifacts,
     audit,
     reviews,
+    async applyReviewDecision(write) {
+      return withProjectTx(pool, write.projectId, async (client) => {
+        const { rows } =
+          write.content !== undefined
+            ? await client.query(
+                `UPDATE artifacts SET status = $3, content = $4 WHERE project_id = $1 AND id = $2 RETURNING ${ARTIFACT_COLS}`,
+                [write.projectId, write.artifactId, write.status, JSON.stringify(write.content ?? null)],
+              )
+            : await client.query(
+                `UPDATE artifacts SET status = $3 WHERE project_id = $1 AND id = $2 RETURNING ${ARTIFACT_COLS}`,
+                [write.projectId, write.artifactId, write.status],
+              );
+        const row = rows[0];
+        if (!row) return null;
+        const r = write.review;
+        await client.query(
+          `INSERT INTO reviews (id, project_id, artifact_id, decision, mode, risk_tier, reviewer, edit_diff, dwell_ms, decided_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [r.id, r.projectId, r.artifactId, r.decision, r.mode, r.riskTier, r.reviewer ?? null, r.editDiff ?? null, r.dwellMs ?? null, r.decidedAt ?? null, r.createdAt],
+        );
+        const a = write.audit;
+        await client.query(
+          `INSERT INTO audit_events (id, project_id, actor_id, workflow_run_id, action, input_sha256, prompt_version, model, sources, detail, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [a.id, a.projectId, a.actorId, a.workflowRunId, a.action, a.inputSha256 ?? null, a.promptVersion ?? null, a.model ?? null, JSON.stringify(a.sources), JSON.stringify(a.detail), a.createdAt],
+        );
+        return rowToArtifact(row);
+      });
+    },
     async close() {
       await pool.end();
     },

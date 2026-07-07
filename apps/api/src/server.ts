@@ -4,9 +4,10 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getConfig } from '@arbiter/config';
-import { AuditEvent, ReviewLog, newAuditEventId, newReviewLogId, nowIso, unifiedDiff } from '@arbiter/core';
-import type { ArtifactId, ProjectId, UserId } from '@arbiter/core';
+import { ArtifactId, AuditEvent, ReviewLog, newAuditEventId, newReviewLogId, nowIso, unifiedDiff } from '@arbiter/core';
+import type { ProjectId, UserId } from '@arbiter/core';
 import type { GuardrailEngine } from '@arbiter/guardrail';
+import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
 import { fetchJiraIssue } from './jira';
@@ -29,21 +30,25 @@ function summaryOf(content: unknown): string {
   return '(untitled artifact)';
 }
 
+// Bounded to prevent unauthenticated cost/compute-exhaustion via oversized inputs.
 const RunBody = z.object({
-  requirement: z.string().min(1, 'requirement is required'),
+  requirement: z.string().min(1, 'requirement is required').max(20_000),
   context: z
     .array(
       z.object({
-        title: z.string().default('context'),
-        content: z.string().min(1),
+        title: z.string().max(200).default('context'),
+        content: z.string().min(1).max(20_000),
         sourceType: z.enum(['jira', 'confluence', 'openapi', 'schema', 'repo', 'upload', 'paste', 'other']).optional(),
       }),
     )
+    .max(20)
     .default([]),
   riskTier: z.enum(['low', 'medium', 'high']).optional(),
   autoApprove: z.boolean().default(false),
   simulateHallucination: z.boolean().default(false),
 });
+
+const JIRA_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
 
 export interface ServerDeps {
   readonly engine: GuardrailEngine;
@@ -55,6 +60,19 @@ export interface ServerDeps {
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
   const config = getConfig();
+
+  // Minimal auth guard until Google SSO (Phase 1): when ARBITER_API_TOKEN is set,
+  // all /v1 and /api routes require `Authorization: Bearer <token>`.
+  const apiToken = config.env.ARBITER_API_TOKEN;
+  if (apiToken) {
+    app.addHook('onRequest', async (request, reply) => {
+      const path = request.url.split('?')[0] ?? '';
+      if (path === '/health' || (!path.startsWith('/v1') && !path.startsWith('/api'))) return;
+      if (request.headers.authorization !== `Bearer ${apiToken}`) {
+        return reply.status(401).send({ error: 'unauthorized' });
+      }
+    });
+  }
 
   const modes = {
     persistence: config.persistence,
@@ -74,6 +92,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         .status(501)
         .send({ error: 'jira_not_configured', message: 'Set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN in .env to enable Jira fetch.' });
     }
+    if (!JIRA_KEY.test(request.params.key)) return reply.status(400).send({ error: 'invalid_key' });
     try {
       return reply.send({ context: await fetchJiraIssue(request.params.key) });
     } catch (e) {
@@ -81,10 +100,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
   });
 
-  // List available workflows (for the UI switcher).
   app.get('/v1/workflows', async () => ({ workflows: listWorkflowsMeta() }));
 
-  // Prompt library — the versioned 6-component templates (seeded from A1–A8).
   app.get('/v1/prompts', async () => {
     const labels = new Map(listWorkflowsMeta().map((m) => [m.id, m.label]));
     return { prompts: listPromptTemplates().map((t) => ({ ...t, label: labels.get(t.id) ?? t.id })) };
@@ -99,7 +116,6 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     const body = parsed.data;
 
-    // Fresh tracer per request so the UI shows exactly this run's trace.
     const tracer = new InMemoryTracer();
     const outcome = await runWorkflow(
       deps.engine,
@@ -161,38 +177,39 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   app.get<{ Params: { id: string } }>('/v1/artifacts/:id', async (request, reply) => {
-    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, request.params.id as ArtifactId);
+    const idCheck = ArtifactId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, idCheck.data);
     if (!artifact) return reply.status(404).send({ error: 'not_found' });
     const reviews = await deps.engine.repos.reviews.listByArtifact(deps.demoProjectId, artifact.id);
     return { artifact, reviews };
   });
 
   app.post<{ Params: { id: string } }>('/v1/artifacts/:id/review', async (request, reply) => {
+    const idCheck = ArtifactId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
     const parsed = ReviewBody.safeParse(request.body ?? {});
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     const { decision, editedContent, dwellMs } = parsed.data;
 
-    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, request.params.id as ArtifactId);
+    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, idCheck.data);
     if (!artifact) return reply.status(404).send({ error: 'not_found' });
 
     const statusFor = { approved: 'approved', rejected: 'rejected', needs_changes: 'in_review' } as const;
 
-    // Capture the reviewer's edit-diff — the flywheel signal.
+    // Sanitize reviewer-supplied content BEFORE diffing/persisting — raw PHI a
+    // reviewer types in must not land in stored artifacts or the edit-diff.
     let editDiff: string | undefined;
     let contentPatch: unknown | undefined;
     if (editedContent !== undefined) {
+      const sanitizedEdit = await sanitizeJson(editedContent, deps.engine.sanitizer);
       const before = JSON.stringify(artifact.content, null, 2);
-      const after = JSON.stringify(editedContent, null, 2);
+      const after = JSON.stringify(sanitizedEdit, null, 2);
       if (before !== after) {
         editDiff = unifiedDiff(before, after);
-        contentPatch = editedContent;
+        contentPatch = sanitizedEdit;
       }
     }
-
-    const updated = await deps.engine.repos.artifacts.update(deps.demoProjectId, artifact.id, {
-      status: statusFor[decision],
-      ...(contentPatch !== undefined ? { content: contentPatch } : {}),
-    });
 
     const now = nowIso();
     const review = ReviewLog.parse({
@@ -208,20 +225,26 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       decidedAt: now,
       createdAt: now,
     });
-    await deps.engine.repos.reviews.append(review);
+    const audit = AuditEvent.parse({
+      id: newAuditEventId(),
+      projectId: deps.demoProjectId,
+      actorId: deps.demoActorId,
+      workflowRunId: artifact.workflowRunId,
+      action: 'gate.decision',
+      sources: [],
+      detail: { decision, source: 'human_review', edited: editDiff !== undefined },
+      createdAt: now,
+    });
 
-    await deps.engine.repos.audit.append(
-      AuditEvent.parse({
-        id: newAuditEventId(),
-        projectId: deps.demoProjectId,
-        actorId: deps.demoActorId,
-        workflowRunId: artifact.workflowRunId,
-        action: 'gate.decision',
-        sources: [],
-        detail: { decision, source: 'human_review', edited: editDiff !== undefined },
-        createdAt: now,
-      }),
-    );
+    // One atomic transaction: status + review + audit commit together.
+    const updated = await deps.engine.repos.applyReviewDecision({
+      projectId: deps.demoProjectId,
+      artifactId: artifact.id,
+      status: statusFor[decision],
+      ...(contentPatch !== undefined ? { content: contentPatch } : {}),
+      review,
+      audit,
+    });
 
     return reply.send({ artifact: updated, review });
   });

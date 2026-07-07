@@ -4,7 +4,7 @@ import { Project, User, newProjectId, newUserId, nowIso } from '@arbiter/core';
 import { PolicyReviewGate, SubstringGroundingValidator, createGuardrailEngine } from '@arbiter/guardrail';
 import { buildContextPack } from '@arbiter/guardrail';
 import { InMemoryTracer } from '@arbiter/telemetry';
-import { runHello } from '@arbiter/workflows';
+import { getWorkflow, runHello, runWorkflow } from '@arbiter/workflows';
 
 async function makeEngine() {
   const tracer = new InMemoryTracer();
@@ -41,6 +41,22 @@ describe('guardrail pipeline (end-to-end, offline)', () => {
     const artifacts = await engine.repos.artifacts.listByRun(projectId, outcome.runId);
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0]?.status).toBe('approved');
+  });
+
+  it('sanitizes retrieved context so grounding PHI never reaches the model', async () => {
+    const { engine, projectId, actorId } = await makeEngine();
+    const def = getWorkflow('test-case');
+    const outcome = await runWorkflow(engine, def!, {
+      projectId,
+      actorId,
+      requirement: 'Verify member login',
+      context: [{ title: 's', content: 'Patient a@b.com. Fields: email, coverage_status, member_id, password.' }],
+      autoApprove: true,
+    });
+    const ctx = outcome.contextPack.items[0]?.content ?? '';
+    expect(ctx).not.toContain('a@b.com'); // PHI redacted
+    expect(ctx).toContain('coverage_status'); // field names survive so grounding still works
+    expect(outcome.grounding.violations).toBe(0);
   });
 
   it('blocks export when the output references an ungrounded field', async () => {

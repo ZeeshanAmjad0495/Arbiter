@@ -1,17 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import type { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ArbiterConfig } from '@arbiter/config';
 import { ProviderError } from '@arbiter/core';
 import type { GenerateRequest, GenerateResult, LlmProvider, ModelTier } from './types';
 
+const TOOL_NAME = 'emit_result';
+
 /**
- * Real provider. Uses the Anthropic Messages API with:
- *  - structured outputs via `messages.parse` + `zodOutputFormat` (grammar-level
- *    JSON — eliminates parse failures as a class), and
- *  - prompt caching on the static system prefix (`cache_control: ephemeral`).
- *
- * The request is deliberately minimal (no thinking/effort) so the same call
- * works across the Haiku / Sonnet / Opus cascade without per-model 400s.
+ * Real Anthropic provider. Structured output via FORCED tool use: we build the
+ * JSON Schema from the Zod schema ourselves (zod-to-json-schema, zod-v3-safe)
+ * and validate the tool input with the same Zod schema. We deliberately do NOT
+ * use the SDK's `zodOutputFormat` helper — it targets zod v4 internals and
+ * throws on our zod-v3 schemas. Prompt caching is applied to the system prefix.
  */
 export class AnthropicLlmProvider implements LlmProvider {
   readonly kind = 'anthropic' as const;
@@ -20,8 +21,9 @@ export class AnthropicLlmProvider implements LlmProvider {
   constructor(
     apiKey: string,
     private readonly models: ArbiterConfig['models'],
+    baseURL?: string,
   ) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
 
   modelFor(tier: ModelTier): string {
@@ -30,31 +32,40 @@ export class AnthropicLlmProvider implements LlmProvider {
 
   async generate<T>(req: GenerateRequest<T>): Promise<GenerateResult<T>> {
     const model = this.modelFor(req.tier ?? 'default');
-    let res;
+    const jsonSchema = zodToJsonSchema(req.schema as unknown as z.ZodTypeAny, { $refStrategy: 'none' }) as Record<
+      string,
+      unknown
+    >;
+    delete jsonSchema.$schema;
+    const inputSchema = { type: 'object', ...jsonSchema } as Anthropic.Tool['input_schema'];
+
+    let res: Anthropic.Message;
     try {
-      res = await this.client.messages.parse({
+      res = await this.client.messages.create({
         model,
         max_tokens: req.maxTokens ?? 4096,
         system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: req.prompt }],
-        // The 0.110 `helpers/zod` typings target zod v4 internals; we pin zod v3,
-        // which is also in the SDK's supported peer range (^3.25 || ^4) and works
-        // at runtime. Cast only at this single external seam.
-        output_config: { format: zodOutputFormat(req.schema as unknown as Parameters<typeof zodOutputFormat>[0]) },
+        tools: [{ name: TOOL_NAME, description: 'Emit the structured result matching the schema.', input_schema: inputSchema }],
+        tool_choice: { type: 'tool', name: TOOL_NAME },
       });
     } catch (error) {
       throw new ProviderError('Anthropic generation call failed', { cause: error, context: { model } });
     }
 
-    const parsed = res.parsed_output as T | null;
-    if (parsed == null) {
-      throw new ProviderError('Structured output could not be parsed against the schema', { context: { model } });
+    const toolUse = res.content.find((b) => b.type === 'tool_use');
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      throw new ProviderError('Anthropic did not return a tool_use block', { context: { model } });
     }
-    // Re-validate through our own schema instance to be certain of the shape.
-    const output = req.schema.parse(parsed);
+    const parsed = req.schema.safeParse(toolUse.input);
+    if (!parsed.success) {
+      throw new ProviderError('Anthropic output failed schema validation', {
+        context: { model, issues: parsed.error.issues.slice(0, 5) },
+      });
+    }
 
     return {
-      output,
+      output: parsed.data,
       model,
       usage: {
         inputTokens: res.usage.input_tokens,

@@ -62,6 +62,9 @@ importers:
       '@arbiter/guardrail':
         specifier: workspace:*
         version: link:../../packages/guardrail
+      '@arbiter/sanitize':
+        specifier: workspace:*
+        version: link:../../packages/sanitize
       '@arbiter/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry

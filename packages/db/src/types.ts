@@ -46,6 +46,16 @@ export interface ReviewRepository {
   listByArtifact(projectId: ProjectId, artifactId: ArtifactId): Promise<ReviewLog[]>;
 }
 
+/** A governed review decision — artifact update + review log + audit, written atomically. */
+export interface ReviewDecisionWrite {
+  projectId: ProjectId;
+  artifactId: ArtifactId;
+  status: ArtifactStatus;
+  content?: unknown;
+  review: ReviewLog;
+  audit: AuditEvent;
+}
+
 export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
@@ -53,5 +63,10 @@ export interface RepositoryBundle {
   readonly artifacts: ArtifactRepository;
   readonly audit: AuditRepository;
   readonly reviews: ReviewRepository;
+  /**
+   * Apply a review decision as ONE transaction so a governed state change can
+   * never be left without its audit row (the 'every action audited' invariant).
+   */
+  applyReviewDecision(write: ReviewDecisionWrite): Promise<Artifact | null>;
   close(): Promise<void>;
 }

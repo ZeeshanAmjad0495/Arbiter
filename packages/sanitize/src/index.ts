@@ -7,7 +7,7 @@ import { CUSTOM_RECOGNIZERS, REGEX_RECOGNIZERS } from './recognizers';
 
 export * from './demask';
 export * from './recognizers';
-export { CREDENTIAL_TYPES, dedupeMatches, runRecognizers, sanitizeCore, type RawMatch } from './core';
+export { CREDENTIAL_TYPES, mergeMatches, runRecognizers, sanitizeCore, type RawMatch } from './core';
 
 /**
  * The one interface the guardrail pipeline depends on. `sanitize()` returns a
@@ -35,20 +35,23 @@ class PresidioSanitizer implements SanitizePort {
     private readonly analyzerUrl: string,
   ) {}
   async sanitize(text: string): Promise<SanitizationReport> {
-    let matches: RawMatch[];
     try {
       const presidio = await analyzeWithPresidio(text, this.analyzerUrl);
       // Always layer in the custom recognizers (member IDs, secrets, internal URLs)
       // that Presidio's defaults miss.
       const custom = runRecognizers(text, CUSTOM_RECOGNIZERS);
-      matches = [...presidio, ...custom];
-    } catch {
-      // Fail safe: if the sidecar is unreachable, fall back to the full regex set
-      // rather than sending unsanitized text.
-      matches = runRecognizers(text, REGEX_RECOGNIZERS);
-      return sanitizeCore(text, matches, 'regex', this.demask);
+      return sanitizeCore(text, [...presidio, ...custom], 'presidio', this.demask);
+    } catch (error) {
+      // Fail safe, but LOUD and DISTINGUISHABLE: a silent downgrade of PHI
+      // protection is a security event, not a warning. `regex-fallback` is
+      // separate from a configured regex deployment so monitoring can alert.
+      // eslint-disable-next-line no-console
+      console.error(
+        `[sanitize] Presidio unreachable at ${this.analyzerUrl} — DEGRADED to regex-fallback (weaker PHI coverage): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      const matches = runRecognizers(text, REGEX_RECOGNIZERS);
+      return sanitizeCore(text, matches, 'regex-fallback', this.demask);
     }
-    return sanitizeCore(text, matches, 'presidio', this.demask);
   }
 }
 
@@ -57,4 +60,20 @@ export function createSanitizer(config: ArbiterConfig, demask: DemaskStore = cre
     return new PresidioSanitizer(demask, config.env.PRESIDIO_ANALYZER_URL);
   }
   return new RegexSanitizer(demask);
+}
+
+/**
+ * Recursively sanitize the string leaves of an arbitrary JSON value — used to
+ * scrub reviewer edits and retrieved context so raw PHI never reaches storage
+ * or the model even when it enters outside the primary input.
+ */
+export async function sanitizeJson(value: unknown, sanitizer: SanitizePort): Promise<unknown> {
+  if (typeof value === 'string') return (await sanitizer.sanitize(value)).sanitizedText;
+  if (Array.isArray(value)) return Promise.all(value.map((v) => sanitizeJson(v, sanitizer)));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = await sanitizeJson(v, sanitizer);
+    return out;
+  }
+  return value;
 }

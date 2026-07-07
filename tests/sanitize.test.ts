@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '@arbiter/config';
-import { createDemaskStore, createSanitizer, luhnValid } from '@arbiter/sanitize';
+import { createDemaskStore, createSanitizer, luhnValid, sanitizeJson } from '@arbiter/sanitize';
 
 const offline = loadConfig({});
 
@@ -33,6 +33,24 @@ describe('sanitizer (regex engine)', () => {
     expect(luhnValid('4111111111111112')).toBe(false);
   });
 
+  it('hard-blocks URL-embedded basic-auth and Bearer credentials', async () => {
+    const r1 = await sanitizer.sanitize('connect postgresql://appuser:Tr0ub4dor@db.example.com:5432/claims');
+    expect(r1.blocked).toBe(true);
+    expect(r1.sanitizedText).not.toContain('Tr0ub4dor');
+
+    const r2 = await sanitizer.sanitize('call it with Authorization: Bearer 9f8c7b6a5d4e3f2a1b0cAABBCCDD');
+    expect(r2.blocked).toBe(true);
+    expect(r2.sanitizedText).not.toContain('9f8c7b6a5d4e3f2a1b0cAABBCCDD');
+  });
+
+  it('redacts the UNION of overlapping matches (no unredacted remainder leaks)', async () => {
+    // Regression: an EMAIL overlapping an INTERNAL_URL must not leave the internal
+    // hostname (the URL match remainder) unredacted.
+    const r = await sanitizer.sanitize('see http://internal.corp/u?e=bob@corp.local/x for details');
+    expect(r.sanitizedText).not.toContain('internal.corp');
+    expect(r.sanitizedText).not.toContain('bob@corp.local');
+  });
+
   it('hard-blocks a secret embedded in a URL (no engulfing-match bypass)', async () => {
     // Regression: an INTERNAL_URL that engulfs a JWT in its query string must not
     // suppress the credential match and let the secret through / get stored.
@@ -42,6 +60,20 @@ describe('sanitizer (regex engine)', () => {
     expect(report.blockReasons.length).toBeGreaterThan(0);
     expect(report.sanitizedText).not.toContain(jwt);
     expect(report.sanitizedText).not.toContain('eyJhbGci');
+  });
+});
+
+describe('sanitizeJson', () => {
+  it('recursively redacts string leaves and leaves non-strings intact', async () => {
+    const sanitizer = createSanitizer(loadConfig({}));
+    const out = (await sanitizeJson(
+      { note: 'email john@x.com', nested: { list: ['SSN 123-45-6789'] }, count: 5 },
+      sanitizer,
+    )) as { note: string; nested: { list: string[] }; count: number };
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain('john@x.com');
+    expect(serialized).not.toContain('123-45-6789');
+    expect(out.count).toBe(5);
   });
 });
 

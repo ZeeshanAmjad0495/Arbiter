@@ -38,6 +38,11 @@ const EnvSchema = z.object({
   OTEL_SERVICE_NAME: z.string().default('arbiter'),
 
   ARBITER_API_PORT: z.coerce.number().int().positive().default(4310),
+  // Bind to localhost by default; opt into wider exposure explicitly.
+  ARBITER_API_HOST: z.string().default('127.0.0.1'),
+  // When set, all /v1 and /api routes require `Authorization: Bearer <token>`
+  // (a minimal guard until Google SSO lands in Phase 1).
+  ARBITER_API_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -80,13 +85,18 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     llm === 'kimi'
       ? { draft: env.KIMI_MODEL, default: env.KIMI_MODEL, judge: env.KIMI_MODEL }
       : { draft: env.ARBITER_MODEL_DRAFT, default: env.ARBITER_MODEL_DEFAULT, judge: env.ARBITER_MODEL_JUDGE };
+  const demask = env.ARBITER_DEMASK_KEY ? 'encrypted' : 'ephemeral';
+  // Never silently store PII unencrypted in a deployed environment.
+  if (env.NODE_ENV === 'production' && demask === 'ephemeral') {
+    throw new ConfigError('ARBITER_DEMASK_KEY is required in production — refusing to store the de-mask PII map unencrypted');
+  }
   return {
     env,
     persistence: env.DATABASE_URL ? 'postgres' : 'memory',
     sanitizer: env.PRESIDIO_ANALYZER_URL && env.PRESIDIO_ANONYMIZER_URL ? 'presidio' : 'regex',
     llm,
     telemetry: env.OTEL_EXPORTER_OTLP_ENDPOINT ? 'otlp' : 'noop',
-    demask: env.ARBITER_DEMASK_KEY ? 'encrypted' : 'ephemeral',
+    demask,
     models,
     kimi: {
       baseUrl: env.KIMI_BASE_URL,

@@ -44,24 +44,33 @@ export function runRecognizers(text: string, recognizers: readonly Recognizer[])
 }
 
 /**
- * Resolve overlapping matches by PRIORITY, not position: credentials first, then
- * higher score, then longer span. A match is kept only if it does not overlap any
- * already-kept match. This guarantees a credential is never suppressed by an
- * overlapping non-credential match (e.g. an INTERNAL_URL that engulfs a JWT in its
- * query string) — the bug that would otherwise defeat the credential hard-block.
+ * Merge ALL overlapping matches into single spans and redact the UNION — so no
+ * text that fell inside any recognizer match is ever emitted. (Fixes the leak
+ * where dropping a lower-priority overlapping match left its non-overlapping
+ * remainder raw.) The merged span's representative type is a credential if any
+ * constituent is one (so it still hard-blocks), otherwise the highest-scoring
+ * constituent (for the placeholder + de-mask mapping).
  */
-export function dedupeMatches(matches: readonly RawMatch[]): RawMatch[] {
-  const credRank = (m: RawMatch): number => (CREDENTIAL_TYPES.has(m.type) ? 1 : 0);
-  const ordered = [...matches].sort(
-    (a, b) => credRank(b) - credRank(a) || b.score - a.score || b.end - b.start - (a.end - a.start) || a.start - b.start,
-  );
-  const kept: RawMatch[] = [];
-  for (const m of ordered) {
-    const overlaps = kept.some((k) => m.start < k.end && k.start < m.end);
-    if (!overlaps) kept.push(m);
+export function mergeMatches(matches: readonly RawMatch[]): RawMatch[] {
+  if (matches.length === 0) return [];
+  const credRank = (t: SanitizationFindingType): number => (CREDENTIAL_TYPES.has(t) ? 1 : 0);
+  const sorted = [...matches].sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: RawMatch[] = [];
+  let cur: RawMatch = { ...sorted[0] };
+  for (let i = 1; i < sorted.length; i++) {
+    const m = sorted[i];
+    if (m.start < cur.end) {
+      const end = Math.max(cur.end, m.end);
+      const takeM =
+        credRank(m.type) > credRank(cur.type) || (credRank(m.type) === credRank(cur.type) && m.score > cur.score);
+      cur = takeM ? { type: m.type, start: cur.start, end, score: m.score, engine: m.engine } : { ...cur, end };
+    } else {
+      merged.push(cur);
+      cur = { ...m };
+    }
   }
-  kept.sort((a, b) => a.start - b.start);
-  return kept;
+  merged.push(cur);
+  return merged;
 }
 
 /**
@@ -73,12 +82,12 @@ export function dedupeMatches(matches: readonly RawMatch[]): RawMatch[] {
 export async function sanitizeCore(
   text: string,
   rawMatches: readonly RawMatch[],
-  engine: 'presidio' | 'regex',
+  engine: 'presidio' | 'regex' | 'regex-fallback',
   demask: DemaskStore,
 ): Promise<SanitizationReport> {
-  const matches = dedupeMatches(rawMatches);
+  const matches = mergeMatches(rawMatches);
   // Belt-and-suspenders: a credential ANYWHERE in the raw matches blocks the
-  // request, independent of what survived dedupe.
+  // request, independent of the merge outcome.
   const hasRawCredential = rawMatches.some((m) => CREDENTIAL_TYPES.has(m.type));
   const findings: SanitizationReport['findings'] = [];
   const blockReasons: string[] = [];
@@ -115,6 +124,8 @@ export async function sanitizeCore(
     findings,
     blocked,
     blockReasons,
-    originalSha256: sha256Hex(text),
+    // Hash the SANITIZED text (not raw) for audit correlation — a raw hash of a
+    // low-entropy PHI value (e.g. a lone SSN) would be brute-forceable.
+    originalSha256: sha256Hex(out),
   });
 }

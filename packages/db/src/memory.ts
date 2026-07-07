@@ -118,6 +118,16 @@ export function createMemoryRepositories(): RepositoryBundle {
     artifacts: artifactRepo,
     audit: auditRepo,
     reviews: reviewRepo,
+    async applyReviewDecision(write) {
+      const updated = await artifactRepo.update(write.projectId, write.artifactId, {
+        status: write.status,
+        ...(write.content !== undefined ? { content: write.content } : {}),
+      });
+      if (!updated) return null;
+      await reviewRepo.append(write.review);
+      await auditRepo.append(write.audit);
+      return updated;
+    },
     async close() {
       /* nothing to close */
     },

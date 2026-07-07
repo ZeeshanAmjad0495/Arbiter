@@ -33,7 +33,16 @@ export async function fetchJiraIssue(key: string): Promise<JiraContext> {
   }
   const auth = Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64');
   const url = `${env.JIRA_BASE_URL.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status`;
-  const res = await fetch(url, { headers: { authorization: `Basic ${auth}`, accept: 'application/json' } });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { authorization: `Basic ${auth}`, accept: 'application/json' }, signal: controller.signal });
+  } catch (error) {
+    throw new Error(controller.signal.aborted ? 'jira_timeout' : `jira_unreachable: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`jira_error_${res.status}`);
 
   const data = (await res.json()) as {

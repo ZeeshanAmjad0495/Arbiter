@@ -93,6 +93,9 @@ export class GuardrailEngine {
   get repos(): RepositoryBundle {
     return this.deps.repos;
   }
+  get sanitizer(): SanitizePort {
+    return this.deps.sanitizer;
+  }
   get sanitizerEngine(): SanitizePort['engine'] {
     return this.deps.sanitizer.engine;
   }
@@ -176,11 +179,20 @@ export class GuardrailEngine {
         };
       }
 
-      // 2. Ground.
+      // 2. Ground. Retrieved/grounding content is sanitized too — raw PHI in a
+      // synced ticket or an uploaded doc must not reach the model via the context
+      // pack (field names, being non-PII, survive so grounding still validates).
       const pack = await withSpan(root, 'ground', { [ArbiterAttr.STAGE]: 'ground' }, async (span) => {
         const built = await req.buildContextPack(sanitization.sanitizedText);
-        span.setAttribute('arbiter.context.items', built.items.length);
-        return built;
+        const items = await Promise.all(
+          built.items.map(async (it) => ({
+            ...it,
+            content: (await this.deps.sanitizer.sanitize(it.content)).sanitizedText,
+          })),
+        );
+        const grounded: ContextPack = { ...built, items };
+        span.setAttribute('arbiter.context.items', grounded.items.length);
+        return grounded;
       });
       await appendAudit('ground', { items: pack.items.length }, { sources: pack.items.map((i) => i.citation) });
 

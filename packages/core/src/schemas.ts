@@ -81,13 +81,15 @@ export const SanitizationFinding = z.object({
 export type SanitizationFinding = z.infer<typeof SanitizationFinding>;
 
 export const SanitizationReport = z.object({
-  engine: z.enum(['presidio', 'regex']),
+  // 'regex-fallback' = Presidio was configured but unreachable and we degraded to
+  // regex — a security-relevant signal, distinct from a plain regex deployment.
+  engine: z.enum(['presidio', 'regex', 'regex-fallback']),
   sanitizedText: z.string(),
   findings: z.array(SanitizationFinding),
   /** True when the input contained something that must NEVER be sent (e.g. live credential). */
   blocked: z.boolean(),
   blockReasons: z.array(z.string()),
-  /** sha256 of the ORIGINAL input, for audit correlation without storing the input. */
+  /** sha256 of the SANITIZED text, for audit correlation without a reversible PHI hash. */
   originalSha256: z.string(),
 });
 export type SanitizationReport = z.infer<typeof SanitizationReport>;
