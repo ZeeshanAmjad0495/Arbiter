@@ -378,6 +378,38 @@ const CASES: EvalCase[] = [
     // The stub emits placeholder tokens only, so the output re-scan finds no PII and the run is NOT blocked.
     graders: [notNull, grounded, nonEmptyArray('fields'), nonEmptyArray('sampleRows'), noExportBlock],
   },
+
+  // --- Adversarial negatives: the anti-hallucination guarantee per grounded
+  // workflow. Context is stripped of the ids the output cites, so every cited
+  // id/endpoint/field is ungrounded → export must block + needs_changes. ---
+  {
+    name: 'traceability-matrix: ungrounded requirement/test ids block export',
+    workflow: 'traceability-matrix',
+    requirement: 'Build the traceability matrix.',
+    context: [{ title: 'unrelated', content: 'This context deliberately contains no requirement or test identifiers.' }],
+    graders: [groundingBlocks],
+  },
+  {
+    name: 'compliance-mapping: ungrounded control ids block export',
+    workflow: 'compliance-mapping',
+    requirement: 'Map the framework controls to the feature.',
+    context: [{ title: 'unrelated', content: 'A framework overview with no control identifiers listed.' }],
+    graders: [groundingBlocks],
+  },
+  {
+    name: 'api-test-generator: invented endpoint/fields block export',
+    workflow: 'api-test-generator',
+    requirement: 'Generate an API test suite for the endpoint.',
+    context: [{ title: 'unrelated', content: 'A prose description with no endpoint paths or field names.' }],
+    graders: [groundingBlocks],
+  },
+  {
+    name: 'cross-req-inconsistency: cite-two-sources fails when the ids are absent',
+    workflow: 'cross-req-inconsistency',
+    requirement: 'Check these requirements for inconsistencies.',
+    context: [{ title: 'unrelated', content: 'Some text with no requirement identifiers at all.' }],
+    graders: [groundingBlocks],
+  },
 ];
 
 async function main(): Promise<void> {
