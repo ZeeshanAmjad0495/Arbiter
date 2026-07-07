@@ -32,8 +32,30 @@ export interface GenerateResult<T> {
   readonly usage: TokenUsage;
 }
 
+/** A streamed increment while the (slow, thinking-enabled) model generates. */
+export interface StreamEvent {
+  readonly type: 'text' | 'reasoning';
+  readonly delta: string;
+}
+
 export interface LlmProvider {
   readonly kind: 'anthropic' | 'kimi' | 'openai' | 'stub';
   modelFor(tier: ModelTier): string;
   generate<T>(req: GenerateRequest<T>): Promise<GenerateResult<T>>;
+  /**
+   * Optional token streaming. Emits text/reasoning deltas as they arrive (progress
+   * while thinking is on) and resolves to the same validated result as generate().
+   * Providers that don't implement it fall back to generate() via streamGenerate().
+   */
+  generateStream?<T>(req: GenerateRequest<T>, onEvent: (e: StreamEvent) => void): Promise<GenerateResult<T>>;
+}
+
+/** Use streaming when the provider supports it, else fall back to a single generate. */
+export async function streamGenerate<T>(
+  provider: LlmProvider,
+  req: GenerateRequest<T>,
+  onEvent: (e: StreamEvent) => void,
+): Promise<GenerateResult<T>> {
+  if (provider.generateStream) return provider.generateStream(req, onEvent);
+  return provider.generate(req);
 }

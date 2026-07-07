@@ -9,7 +9,7 @@ export * from './types';
 export { StubLlmProvider } from './stub';
 export { AnthropicLlmProvider } from './anthropic';
 export { KimiLlmProvider } from './kimi';
-export { OpenAICompatProvider } from './openai-compat';
+export { OpenAICompatProvider, parseSseData } from './openai-compat';
 export { zodMock } from './zod-mock';
 export * from './judge';
 
