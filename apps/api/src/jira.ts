@@ -22,9 +22,37 @@ function adfToText(node: AdfNode | undefined): string {
 }
 
 /**
+ * HARD, NON-NEGOTIABLE INVARIANT: Arbiter is READ-ONLY against Jira. Every Jira
+ * HTTP call MUST go through this function, which refuses any method other than
+ * GET/HEAD — so writing to the connected Jira workspace is physically impossible
+ * in this codebase. If Jira write-back is ever built, it must be a separate,
+ * explicitly user-gated WriteGate path — and never against this workspace.
+ */
+export async function jiraReadOnlyFetch(
+  url: string,
+  headers: Record<string, string>,
+  method: 'GET' | 'HEAD' = 'GET',
+): Promise<Response> {
+  if (method !== 'GET' && method !== 'HEAD') {
+    throw new Error(`jira_write_forbidden: Arbiter is read-only against Jira (attempted ${String(method)})`);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    return await fetch(url, { method, headers, signal: controller.signal });
+  } catch (error) {
+    throw new Error(
+      controller.signal.aborted ? 'jira_timeout' : `jira_unreachable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Read-only Jira fetch-by-ticket-key (Phase 1 grounding pull-forward). Returns a
  * context item so the grounding validator can check generated references against
- * the real ticket. Never writes to Jira (writes are Phase 3, via WriteGate).
+ * the real ticket. NEVER writes to Jira (enforced by jiraReadOnlyFetch).
  */
 export async function fetchJiraIssue(key: string): Promise<JiraContext> {
   const { env } = getConfig();
@@ -33,16 +61,7 @@ export async function fetchJiraIssue(key: string): Promise<JiraContext> {
   }
   const auth = Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64');
   const url = `${env.JIRA_BASE_URL.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: { authorization: `Basic ${auth}`, accept: 'application/json' }, signal: controller.signal });
-  } catch (error) {
-    throw new Error(controller.signal.aborted ? 'jira_timeout' : `jira_unreachable: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await jiraReadOnlyFetch(url, { authorization: `Basic ${auth}`, accept: 'application/json' });
   if (!res.ok) throw new Error(`jira_error_${res.status}`);
 
   const data = (await res.json()) as {

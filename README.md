@@ -111,11 +111,13 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-- **Phase 0 — Foundations:** ✅ the guardrail spine, offline-first, Postgres+RLS validated.
-- **Phase 1 — Governed Workbench MVP:** ✅ five workflows, review queue + edit-diff capture, export, 6-component prompt library, OpenAPI upload + Jira fetch, eval gate in CI.
-- **Phase 2+ (planned):** per-project knowledge (Jira/Confluence sync + hybrid RAG), Source-vs-Output Validator, gated writes (WriteGate → Jira/GitHub/TestRail), PR review & regression-impact agents, the full LLM Eval Workbench (judge calibration, Ragas, statistical gating, red-team), and the feedback flywheel.
+**Shipped (Wave 0):** the governed workbench — guardrail spine, five workflows, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass.
 
-**Deliberately not building** (integrate/defer instead): self-healing locator engines (Playwright's healer), visual-AI diffing (Percy/Chromatic), predictive test-selection ML, fine-tuned models, browser-agent frameworks as regression gates, GraphRAG, code embeddings, homegrown prompt-registry/eval engines.
+The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 1** (Operational-Readiness gate, NFR Completeness Analyzer, grounded Release-Readiness inputs).
+
+**Read-only Jira — enforced in code:** Arbiter never writes to the connected Jira workspace; every Jira request refuses any method but GET/HEAD before it is sent.
+
+**Deliberately not building** (integrate/delegate instead): test *execution* (Playwright/k6/Appium), self-healing locators, visual-AI diffing (Percy/Chromatic), predictive test-selection ML, fine-tuned models, browser-agent regression gates, GraphRAG, code embeddings, homegrown prompt-registry/eval engines.
 
 ## Verify
 
