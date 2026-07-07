@@ -2326,6 +2326,279 @@ const mutationSurvivors = define<MutationSurvivors>({
   }),
 });
 
+/* 34. Feature-Flag Test-Matrix + Stale-Flag Finder ------------------ */
+
+const FeatureFlagMatrix = z.object({
+  summary: z.string(),
+  flags: z.array(z.string()),
+  combinations: z.array(z.object({ combo: z.string(), whatToTest: z.string(), priority: z.enum(['low', 'medium', 'high']) })),
+  staleFlags: z.array(z.object({ flag: z.string(), reason: z.string(), recommendation: z.enum(['remove', 'keep', 'review']) })),
+  notes: z.string(),
+});
+export type FeatureFlagMatrix = z.infer<typeof FeatureFlagMatrix>;
+
+const featureFlagMatrix = define<FeatureFlagMatrix>({
+  id: 'feature-flag-matrix',
+  label: 'Feature-Flag Test-Matrix + Stale-Flag Finder',
+  description: 'Select the behavior-changing flag combinations to test and flag stale/dead flags — flag names grounded.',
+  artifactType: 'feature_flag_matrix',
+  promptVersion: 'feature-flag-matrix@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Feature flags to build a test matrix for (attach the flag list)',
+  schema: FeatureFlagMatrix,
+  system: systemFor('feature-flag-matrix'),
+  ui: {
+    requirementLabel: 'Feature flags (+ list in context)',
+    requirementPlaceholder: 'Paste the flags in play and their rollout state…',
+    sampleRequirement: 'Build a flag test matrix for the redemption flags.',
+    sampleContext: {
+      title: 'Flags',
+      content: 'redemption_batch_enabled (50% rollout); new_discount_math (10%); legacy_promo_codes (100%, launched 8 months ago).',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.flags.map((value) => ({ kind: 'entity' as const, value })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} The behavior-changing combos are redemption_batch_enabled × new_discount_math; legacy_promo_codes is stale (100% for 8 months) and should be removed.`,
+    flags: ['redemption_batch_enabled', 'new_discount_math', 'legacy_promo_codes'],
+    combinations: [
+      { combo: 'redemption_batch_enabled=on, new_discount_math=on', whatToTest: 'Batch redemption with the new discount math end to end.', priority: 'high' },
+      { combo: 'redemption_batch_enabled=on, new_discount_math=off', whatToTest: 'Batch path still correct on the old math (partial rollout).', priority: 'high' },
+      { combo: 'redemption_batch_enabled=off, new_discount_math=on', whatToTest: 'New math on the non-batch path.', priority: 'medium' },
+    ],
+    staleFlags: [{ flag: 'legacy_promo_codes', reason: 'At 100% for 8 months with no off-path.', recommendation: 'remove' }],
+    notes: 'Skip the all-off combo — it is the current production baseline.',
+  }),
+});
+
+/* 35. Resilience / Chaos GameDay Plan ------------------------------- */
+
+const ChaosGameday = z.object({
+  summary: z.string(),
+  hypotheses: z.array(
+    z.object({
+      hypothesis: z.string(),
+      fault: z.string(),
+      blastRadius: z.enum(['single_instance', 'single_service', 'region', 'global']),
+      expectedBehavior: z.string(),
+      abortConditions: z.string(),
+    }),
+  ),
+  safetyMeasures: z.array(z.string()),
+  rollbackPlan: z.string(),
+  decisionOwnedBy: z.string(),
+});
+export type ChaosGameday = z.infer<typeof ChaosGameday>;
+
+const chaosGameday = define<ChaosGameday>({
+  id: 'chaos-gameday',
+  label: 'Resilience / Chaos GameDay Plan',
+  description: 'Design safe, hypothesis-driven chaos experiments with bounded blast radius and explicit abort conditions; human-owned go/no-go.',
+  artifactType: 'chaos_gameday',
+  promptVersion: 'chaos-gameday@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'System / feature to plan a chaos GameDay for',
+  schema: ChaosGameday,
+  system: systemFor('chaos-gameday'),
+  ui: {
+    requirementLabel: 'System / feature',
+    requirementPlaceholder: 'Describe the system and its dependencies to test resilience…',
+    sampleRequirement: 'Plan a GameDay for the checkout redemption path and its points-service dependency.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Two bounded experiments: points-service latency injection and a single-instance kill, each with abort conditions.`,
+    hypotheses: [
+      { hypothesis: 'Checkout stays within SLO when the points service is slow.', fault: 'Inject 2s latency on points-service calls.', blastRadius: 'single_service', expectedBehavior: 'Redemption degrades gracefully (retryable notice); checkout is not blocked.', abortConditions: 'Checkout error rate > 1% or p95 > 3s.' },
+      { hypothesis: 'Losing one redemption instance does not drop requests.', fault: 'Terminate one redemption service instance.', blastRadius: 'single_instance', expectedBehavior: 'Traffic reroutes; no failed redemptions.', abortConditions: 'Any 5xx spike attributable to the kill.' },
+    ],
+    safetyMeasures: ['Run in staging first; feature-flag kill switch ready.', 'One operator owns abort; experiments are timeboxed.'],
+    rollbackPlan: 'Remove the injected fault / restore the instance; disable redemption_batch_enabled if needed.',
+    decisionOwnedBy: 'SRE lead (human)',
+  }),
+});
+
+/* 36. DR / Backup-Restore Drill Checklist --------------------------- */
+
+const DrDrill = z.object({
+  summary: z.string(),
+  rto: z.string(),
+  rpo: z.string(),
+  steps: z.array(
+    z.object({
+      phase: z.enum(['prepare', 'failover', 'validate', 'failback']),
+      action: z.string(),
+      verification: z.string(),
+    }),
+  ),
+  risks: z.array(z.string()),
+  signOffOwnedBy: z.string(),
+});
+export type DrDrill = z.infer<typeof DrDrill>;
+
+const drDrill = define<DrDrill>({
+  id: 'dr-drill',
+  label: 'DR / Backup-Restore Drill Checklist',
+  description: 'A phased DR drill (prepare/failover/validate/failback) with per-step verification and explicit RTO/RPO; human sign-off.',
+  artifactType: 'dr_drill',
+  promptVersion: 'dr-drill@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'System to draft a DR / backup-restore drill for',
+  schema: DrDrill,
+  system: systemFor('dr-drill'),
+  ui: {
+    requirementLabel: 'System (+ RTO/RPO in context)',
+    requirementPlaceholder: 'Describe the system, backups, and RTO/RPO targets…',
+    sampleRequirement: 'Draft a DR drill for the redemptions database (RTO 1h, RPO 15m; nightly snapshot + WAL).',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} A DR drill for the redemptions DB validating a 1h RTO / 15m RPO via snapshot + WAL replay.`,
+    rto: '1 hour',
+    rpo: '15 minutes',
+    steps: [
+      { phase: 'prepare', action: 'Confirm the latest snapshot and WAL are intact and record their timestamps.', verification: 'Checksums match; WAL is continuous to within RPO.' },
+      { phase: 'failover', action: 'Restore the snapshot to the standby and replay WAL.', verification: 'Restored row count matches source within RPO.' },
+      { phase: 'validate', action: 'Run redemption smoke tests against the standby.', verification: 'A test redemption succeeds; points_balance reconciles.' },
+      { phase: 'failback', action: 'Re-sync primary and cut traffic back.', verification: 'No data loss on cutback; error rate normal.' },
+    ],
+    risks: ['WAL gap could exceed RPO if archiving lagged.', 'Standby capacity may not match primary under load.'],
+    signOffOwnedBy: 'SRE / data lead (human)',
+  }),
+});
+
+/* 37. SRE Runbook Drafter ------------------------------------------- */
+
+const SreRunbook = z.object({
+  summary: z.string(),
+  alert: z.string(),
+  detection: z.string(),
+  diagnosis: z.array(z.string()).min(1),
+  mitigations: z.array(z.object({ step: z.string(), effect: z.string() })),
+  escalation: z.string(),
+  rollback: z.string(),
+});
+export type SreRunbook = z.infer<typeof SreRunbook>;
+
+const sreRunbook = define<SreRunbook>({
+  id: 'sre-runbook',
+  label: 'SRE Runbook Drafter',
+  description: 'Draft an operator-actionable runbook (detection → diagnosis → mitigations → escalation → rollback) for an alert.',
+  artifactType: 'sre_runbook',
+  promptVersion: 'sre-runbook@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Alert / failure mode to draft a runbook for',
+  schema: SreRunbook,
+  system: systemFor('sre-runbook'),
+  ui: {
+    requirementLabel: 'Alert / failure mode',
+    requirementPlaceholder: 'Describe the alert and its signals/dependencies…',
+    sampleRequirement: 'Draft a runbook for the "redemption p95 latency high" alert.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Runbook for high redemption latency: confirm the points-service dependency before any restart.`,
+    alert: 'Redemption p95 latency > 500ms for 5 minutes.',
+    detection: 'Latency SLO alert on POST /v2/checkout/redeem.',
+    diagnosis: [
+      'Check the points-service latency dashboard first (most common cause).',
+      'Check DB connection-pool saturation on the redemption service.',
+      'Confirm no deploy correlates with the onset.',
+    ],
+    mitigations: [
+      { step: 'If the points service is slow, enable the degraded-mode flag (skip discount, allow checkout).', effect: 'Protects checkout at the cost of redemptions until recovery.' },
+      { step: 'If pool-saturated, scale out the redemption service by one step.', effect: 'Relieves connection pressure without a restart.' },
+    ],
+    escalation: 'Page the points-service on-call if their latency is the root cause; escalate to the SRE lead after 20 min unresolved.',
+    rollback: 'If a recent deploy correlates, roll back the deploy tag.',
+  }),
+});
+
+/* 38. Gated Ops-Config Drafter -------------------------------------- */
+
+const OpsConfig = z.object({
+  summary: z.string(),
+  change: z.string(),
+  diffPlan: z.string(),
+  risk: z.enum(['low', 'medium', 'high']),
+  verification: z.array(z.string()).min(1),
+  rollback: z.string(),
+  /** Fixed reminder: this is never auto-applied. */
+  appliedVia: z.string(),
+  decisionOwnedBy: z.string(),
+});
+export type OpsConfig = z.infer<typeof OpsConfig>;
+
+const opsConfig = define<OpsConfig>({
+  id: 'ops-config',
+  label: 'Gated Ops-Config Drafter',
+  description: 'Draft an ops/config change as a reviewable diff-plan with verification + rollback — applied only via the human-approved WriteGate, never by Arbiter.',
+  artifactType: 'ops_config',
+  promptVersion: 'ops-config@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Operational config change to draft (never auto-applied)',
+  schema: OpsConfig,
+  system: systemFor('ops-config'),
+  ui: {
+    requirementLabel: 'Config change',
+    requirementPlaceholder: 'Describe the desired ops/config change…',
+    sampleRequirement: 'Draft raising the redemption rate limit from 5 to 20 requests/min per member.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} A draft to raise the per-member redemption rate limit 5 → 20 rpm, applied only via the human-approved WriteGate.`,
+    change: 'Increase per-member redemption rate limit from 5 to 20 requests/minute.',
+    diffPlan: 'rate_limits.redemption.per_member_per_min: 5 -> 20',
+    risk: 'medium',
+    verification: ['After apply, confirm a 6th request within a minute now succeeds.', 'Confirm the points service handles the higher ceiling under load.'],
+    rollback: 'Revert rate_limits.redemption.per_member_per_min to 5.',
+    appliedVia: 'Human-approved WriteGate against a sandbox/non-production target — never auto-applied by Arbiter.',
+    decisionOwnedBy: 'SRE / release owner (human)',
+  }),
+});
+
+/* 39. Test Estimation Assistant ------------------------------------- */
+
+const TestEstimation = z.object({
+  summary: z.string(),
+  assumptions: z.array(z.string()),
+  breakdown: z.array(z.object({ activity: z.string(), effortHours: z.number().nonnegative(), confidence: z.enum(['low', 'medium', 'high']) })),
+  totalHours: z.number().nonnegative(),
+  risks: z.array(z.string()),
+});
+export type TestEstimation = z.infer<typeof TestEstimation>;
+
+const testEstimation = define<TestEstimation>({
+  id: 'test-estimation',
+  label: 'Test Estimation Assistant',
+  description: 'Break testing work into activities with per-activity effort + confidence and explicit assumptions — a transparent estimate, not a single number.',
+  artifactType: 'test_estimation',
+  promptVersion: 'test-estimation@v1',
+  defaultRiskTier: 'low',
+  inputNoun: 'Feature / scope to estimate testing effort for',
+  schema: TestEstimation,
+  system: systemFor('test-estimation'),
+  ui: {
+    requirementLabel: 'Feature / scope',
+    requirementPlaceholder: 'Describe the feature and its testing scope…',
+    sampleRequirement: 'Estimate the testing effort for the loyalty-points redemption feature.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} ~34h of testing across analysis, API/automation, security, a11y, and exploratory — assumes a stable staging env.`,
+    assumptions: ['A production-like staging with the points service is available.', 'The API contract is stable before test design.'],
+    breakdown: [
+      { activity: 'Requirement/NFR analysis + test design', effortHours: 6, confidence: 'high' },
+      { activity: 'API + automation (happy/negative/auth/boundary)', effortHours: 12, confidence: 'medium' },
+      { activity: 'Security abuse-case + authorization testing', effortHours: 6, confidence: 'medium' },
+      { activity: 'Accessibility + exploratory session', effortHours: 6, confidence: 'medium' },
+      { activity: 'Regression + release readiness', effortHours: 4, confidence: 'high' },
+    ],
+    totalHours: 34,
+    risks: ['Points-service instability in staging could inflate automation time.', 'Unstable contract would force test rework.'],
+  }),
+});
+
 /* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
@@ -2364,6 +2637,12 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   personaScenarios,
   mobileTestCases,
   mutationSurvivors,
+  featureFlagMatrix,
+  chaosGameday,
+  drDrill,
+  sreRunbook,
+  opsConfig,
+  testEstimation,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

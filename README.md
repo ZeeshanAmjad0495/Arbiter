@@ -20,7 +20,7 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Twenty-seven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Thirty-nine QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
@@ -49,6 +49,18 @@ Twenty-seven QA/QE workflows, all running through the pipeline above, each with 
 25. **Migration / ETL Test-Plan Generator** *(Wave 6)* — a phased plan (pre/migrate/post/rollback) with **mandatory reconciliation** and a testable rollback plan.
 26. **Executive Quality-Report Drafter** *(Wave 6)* — turns QA metrics/notes into a leadership report (headline, RAG status, key metrics with trends, risks, recommendations).
 27. **Synthetic / PII-safe Test Data Generator** *(Wave 4, output-gated)* — generates synthetic rows for a schema; the **generated output is re-scanned for PII** and any leaked real PII value (email/SSN/card/secret) blocks export.
+28. **Accessibility AC & Manual-Script Generator** — WCAG 2.2 acceptance criteria (SC number + how-to-test) and assistive-technology manual scripts.
+29. **Performance Test-Plan Drafter** — workload model, SLOs, load/stress/soak/spike scenarios with measurable pass criteria; endpoint grounded.
+30. **Non-Functional Result-to-Bug Triager** — compares perf/security/a11y results to thresholds and files the breaches as bugs.
+31. **Persona-Driven Scenario Generator** — distinct personas and scenarios reflecting how each uses the feature.
+32. **Mobile Test-Case & Gesture-Flow Generator** — gestures/orientation/interruptions/connectivity/permissions cases + a device/OS matrix.
+33. **Mutation Survivor Explainer** — surviving mutants → coverage gaps and the exact killing test; mutant ids grounded.
+34. **Feature-Flag Test-Matrix + Stale-Flag Finder** — behavior-changing flag combinations to test + stale-flag removal advice; flag names grounded.
+35. **Resilience / Chaos GameDay Plan** — hypothesis-driven experiments with bounded blast radius + explicit abort conditions; human-owned go/no-go.
+36. **DR / Backup-Restore Drill Checklist** — phased drill (prepare/failover/validate/failback) with per-step verification and explicit RTO/RPO.
+37. **SRE Runbook Drafter** — detection → diagnosis → mitigations → escalation → rollback, operator-actionable under pressure.
+38. **Gated Ops-Config Drafter** — a config change as a reviewable diff-plan + verification + rollback, applied **only via the human-approved WriteGate**, never by Arbiter.
+39. **Test Estimation Assistant** — per-activity effort + confidence with explicit assumptions — a transparent estimate, not a single number.
 
 Plus the platform features around them:
 
@@ -119,7 +131,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 27 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 39 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -136,7 +148,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Waves 0–6):** the governed workbench — guardrail spine, **twenty-seven workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
+**Shipped (Waves 0–6):** the governed workbench — guardrail spine, **thirty-nine workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
 
 The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. The 26 shipped workflows complete the value-ordered wave plan. Remaining work is **substrate/hardening** (tracked in `docs/ROADMAP.md`): the RAG knowledge substrate, WriteGate (gated writes to sandbox targets), an output PII re-scan gate (unblocks Synthetic Test-Data), real OTLP→Langfuse export, LiteLLM judge independence, and the full LLM Eval Workbench — plus the lower-ROI Wave-6 authoring tail (persona/mobile/mutation/chaos/DR/SRE/estimation drafters).
 

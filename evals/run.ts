@@ -426,6 +426,48 @@ const CASES: EvalCase[] = [
     ],
     graders: [notNull, grounded, nonEmptyArray('survivors'), hasString('summary'), hasString('coverageGap')],
   },
+  {
+    name: 'feature-flag-matrix: grounded flags, behavior-changing combos + stale flag',
+    workflow: 'feature-flag-matrix',
+    requirement: 'Build a flag test matrix for the redemption flags.',
+    context: [{ title: 'Flags', content: 'redemption_batch_enabled (50%); new_discount_math (10%); legacy_promo_codes (100%, launched 8 months ago).' }],
+    graders: [notNull, grounded, nonEmptyArray('combinations'), nonEmptyArray('staleFlags'), hasString('summary')],
+  },
+  {
+    name: 'chaos-gameday: hypothesis-driven experiments with abort conditions',
+    workflow: 'chaos-gameday',
+    requirement: 'Plan a GameDay for the checkout redemption path and its points-service dependency.',
+    context: [],
+    graders: [notNull, nonEmptyArray('hypotheses'), nonEmptyArray('safetyMeasures'), hasString('rollbackPlan')],
+  },
+  {
+    name: 'dr-drill: phased steps with RTO/RPO + per-step verification',
+    workflow: 'dr-drill',
+    requirement: 'Draft a DR drill for the redemptions database (RTO 1h, RPO 15m).',
+    context: [],
+    graders: [notNull, nonEmptyArray('steps'), hasString('rto'), hasString('rpo')],
+  },
+  {
+    name: 'sre-runbook: diagnosis before mitigation + escalation + rollback',
+    workflow: 'sre-runbook',
+    requirement: 'Draft a runbook for the "redemption p95 latency high" alert.',
+    context: [],
+    graders: [notNull, nonEmptyArray('diagnosis'), nonEmptyArray('mitigations'), hasString('rollback')],
+  },
+  {
+    name: 'ops-config: gated diff-plan + verification + rollback (never auto-applied)',
+    workflow: 'ops-config',
+    requirement: 'Draft raising the redemption rate limit from 5 to 20 requests/min per member.',
+    context: [],
+    graders: [notNull, hasString('diffPlan'), nonEmptyArray('verification'), hasString('rollback')],
+  },
+  {
+    name: 'test-estimation: per-activity effort + confidence + assumptions',
+    workflow: 'test-estimation',
+    requirement: 'Estimate the testing effort for the loyalty-points redemption feature.',
+    context: [],
+    graders: [notNull, nonEmptyArray('breakdown'), nonEmptyArray('assumptions'), scoreInRange('totalHours')],
+  },
 
   // --- Adversarial negatives: the anti-hallucination guarantee per grounded
   // workflow. Context is stripped of the ids the output cites, so every cited

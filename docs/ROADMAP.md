@@ -76,8 +76,7 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 **Shipped ✓ (with the gate it needed):**
 - **Synthetic / PII-safe Test Data Generator** — now shipped **with the output PII re-scan gate**: `rescanOutput` re-scans the generated artifact and blocks export if any real PII *value* (email/SSN/card/phone/secret) leaks. Label-prone recognizers (MEMBER_ID/INTERNAL_URL) are excluded from the block set so a legitimate `member_email` column never false-blocks — and the MEMBER_ID recognizer was tightened to require a digit so column names aren't redacted from grounding context. Proven in `tests/rescan.test.ts`.
 
-**Still deferred:**
-- **Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager** — straightforward authoring workflows; add on demand.
+**Now shipped ✓:** Accessibility AC & Manual-Script Generator (WCAG 2.2) · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager.
 
 ## Wave 5 — Manual/exploratory depth & corpus reasoning *(shipped ✓)*
 
@@ -93,7 +92,7 @@ Shipped as paste-in-context workflows (RAG will later auto-populate the corpus i
 
 **Shipped ✓ (curated high-value subset):** Smoke/Sanity Suite Designer · Regression Impact Advisor (grounded re-run vs skip) · Data-Quality / DB-Assertion Drafter · Migration/ETL Test-Plan Generator (mandatory reconciliation + rollback) · Executive Quality-Report Drafter (pairs with the Metrics layer).
 
-**Remaining authoring tail (lower ROI, tracked):** Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter · Test Estimation Assistant — all fit the shipped registry pattern; add on demand.
+**Full authoring tail — now shipped ✓:** Persona-Driven Scenario Generator · Mobile Test-Case & Gesture-Flow Generator · Mutation Survivor Explainer · Feature-Flag Test-Matrix + Stale-Flag Finder · Resilience/Chaos GameDay Plan · DR/Backup-Restore Drill Checklist · SRE Runbook Drafter · Gated Ops-Config Drafter (applied only via WriteGate) · Test Estimation Assistant.
 
 ### Deferred — hardening, infra & capability debt (tracked, not dropped)
 
