@@ -94,7 +94,7 @@ Copy `.env.example` to `.env` and set what you need — each dependency flips fr
 
 - **LLM** — set `ANTHROPIC_API_KEY` (Claude cascade), `KIMI_API_KEY` (Kimi/Moonshot, with thinking), or `LITELLM_API_KEY` (any OpenAI-compatible / LiteLLM gateway). Precedence: Kimi > Anthropic > LiteLLM > offline stub. An **independent judge** provider (`ARBITER_JUDGE_*` / LiteLLM) powers the LLM-as-judge Eval Workbench so it isn't marking its own homework.
 - **Postgres** (`DATABASE_URL`) — persistence + Row-Level Security. `pnpm docker:up && pnpm migrate`.
-- **Presidio** (`PRESIDIO_ANALYZER_URL` / `_ANONYMIZER_URL`) — real PII/secret detection.
+- **Presidio** (`PRESIDIO_ANALYZER_URL` / `_ANONYMIZER_URL`) — real PII/secret detection. Arbiter's custom recognizers run app-side in both engine paths; `toPresidioRecognizers()` exports them in Presidio's config shape to also load server-side.
 - **Jira** (`JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN`) — read-only fetch-by-key.
 
 The header mode pills show which path is live (green = real service).

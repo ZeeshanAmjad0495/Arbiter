@@ -7,6 +7,7 @@ import { CUSTOM_RECOGNIZERS, REGEX_RECOGNIZERS } from './recognizers';
 
 export * from './demask';
 export * from './recognizers';
+export * from './presidio-config';
 export { CREDENTIAL_TYPES, mergeMatches, runRecognizers, sanitizeCore, type RawMatch } from './core';
 
 /**
