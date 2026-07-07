@@ -33,7 +33,7 @@ export interface GenerateResult<T> {
 }
 
 export interface LlmProvider {
-  readonly kind: 'anthropic' | 'kimi' | 'stub';
+  readonly kind: 'anthropic' | 'kimi' | 'openai' | 'stub';
   modelFor(tier: ModelTier): string;
   generate<T>(req: GenerateRequest<T>): Promise<GenerateResult<T>>;
 }

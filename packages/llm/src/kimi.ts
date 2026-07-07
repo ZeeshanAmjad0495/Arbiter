@@ -140,7 +140,7 @@ export class KimiLlmProvider implements LlmProvider {
 }
 
 /** Robustly pull a JSON object out of a model reply (handles stray fences/prose). */
-function extractJson(content: string): unknown {
+export function extractJson(content: string): unknown {
   const trimmed = content
     .trim()
     .replace(/^```(?:json)?\s*/i, '')

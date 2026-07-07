@@ -108,10 +108,10 @@ Everything consciously deferred during Waves 0–1, with why it's safe today and
 | **Container image size optimization** | builds & runs; CI-verified, not size-tuned | pre-deploy |
 | **pgvector migration** for dense retrieval | Postgres FTS + app-side cosine over `real[]` behind the retrieval interface | at scale (drop-in behind the interface) |
 | **Streaming on the LLM path** | non-streaming (spinner); Kimi thinking is slow | UX polish (biggest win while thinking is on) |
-| **LiteLLM gateway + 2nd LLM provider** (judge independence) | Anthropic / Kimi / stub only | Eval Workbench judge calibration |
+| ~~**LiteLLM gateway + 2nd LLM provider**~~ ✅ shipped | `OpenAICompatProvider` (LiteLLM / any OpenAI-compatible endpoint); precedence Kimi > Anthropic > LiteLLM > stub; `createJudgeProvider` picks an independent provider for the judge | point at a running LiteLLM gateway |
 | **Expand eval suite → 20–30 cases/workflow** | ~20 code-based checks across 6 cases (CI gate seed) | ongoing, per workflow |
 | **Frontend a11y + design pass** (`ecc:a11y-architect` + Lighthouse) | functional, not a11y-audited | a UI-polish milestone |
-| **Full LLM Eval Workbench** (judge calibration, Ragas, statistical gating, garak/PyRIT) | not built (was the original Phase 4) | its own track after Waves 3–4 (billable client-facing service) |
+| **LLM Eval Workbench** — judge core ✅ shipped; Ragas/garak/PyRIT deferred | `judgeArtifact` (rubric-scored LLM-as-judge, provider-pluggable, deterministic offline stub) + independent judge provider (`tests/judge.test.ts`). Ragas/garak/PyRIT are external Python tools | wire the Python eval tools + statistical gating as a billable client-facing track |
 | **Gated Defect Write-Back → Jira** (Wave 1 #3) | deferred by the read-only-Jira constraint | **only** against a sandbox Jira / GitHub / TestRail, with explicit per-target authorization — never the connected workspace |
 
 ## Delegated permanently (never built)

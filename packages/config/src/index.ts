@@ -32,6 +32,18 @@ const EnvSchema = z.object({
   KIMI_MODEL: z.string().default('kimi-k2.6'),
   KIMI_THINKING: z.enum(['enabled', 'disabled']).default('enabled'),
 
+  // LiteLLM gateway (OpenAI-compatible) — a second provider for judge independence
+  // and multi-provider routing. Lower precedence than Kimi/Anthropic.
+  LITELLM_BASE_URL: z.string().url().default('http://localhost:4000/v1'),
+  LITELLM_API_KEY: z.string().optional(),
+  LITELLM_MODEL: z.string().default('gpt-4o-mini'),
+
+  // Optional independent judge provider (Eval Workbench) — kept distinct from the
+  // generation provider so the LLM-as-judge is not marking its own homework.
+  ARBITER_JUDGE_BASE_URL: optionalUrl,
+  ARBITER_JUDGE_API_KEY: z.string().optional(),
+  ARBITER_JUDGE_MODEL: z.string().default('gpt-4o-mini'),
+
   // Jira read-only fetch-by-ticket-key (Phase 1 grounding pull-forward).
   JIRA_BASE_URL: optionalUrl,
   JIRA_EMAIL: z.string().optional(),
@@ -54,7 +66,7 @@ export interface ArbiterConfig {
   readonly env: Env;
   readonly persistence: 'postgres' | 'memory';
   readonly sanitizer: 'presidio' | 'regex';
-  readonly llm: 'anthropic' | 'kimi' | 'stub';
+  readonly llm: 'anthropic' | 'kimi' | 'litellm' | 'stub';
   readonly telemetry: 'otlp' | 'noop';
   readonly demask: 'encrypted' | 'ephemeral';
   readonly models: {
@@ -66,6 +78,10 @@ export interface ArbiterConfig {
     readonly baseUrl: string;
     readonly model: string;
     readonly thinking: 'enabled' | 'disabled';
+  };
+  readonly litellm: {
+    readonly baseUrl: string;
+    readonly model: string;
   };
   readonly jira: {
     readonly configured: boolean;
@@ -82,12 +98,20 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     });
   }
   const env = parsed.data;
-  // Kimi takes precedence when its key is set (used for testing).
-  const llm: ArbiterConfig['llm'] = env.KIMI_API_KEY ? 'kimi' : env.ANTHROPIC_API_KEY ? 'anthropic' : 'stub';
+  // Precedence: Kimi > Anthropic > LiteLLM > offline stub.
+  const llm: ArbiterConfig['llm'] = env.KIMI_API_KEY
+    ? 'kimi'
+    : env.ANTHROPIC_API_KEY
+      ? 'anthropic'
+      : env.LITELLM_API_KEY
+        ? 'litellm'
+        : 'stub';
   const models =
     llm === 'kimi'
       ? { draft: env.KIMI_MODEL, default: env.KIMI_MODEL, judge: env.KIMI_MODEL }
-      : { draft: env.ARBITER_MODEL_DRAFT, default: env.ARBITER_MODEL_DEFAULT, judge: env.ARBITER_MODEL_JUDGE };
+      : llm === 'litellm'
+        ? { draft: env.LITELLM_MODEL, default: env.LITELLM_MODEL, judge: env.LITELLM_MODEL }
+        : { draft: env.ARBITER_MODEL_DRAFT, default: env.ARBITER_MODEL_DEFAULT, judge: env.ARBITER_MODEL_JUDGE };
   const demask = env.ARBITER_DEMASK_KEY ? 'encrypted' : 'ephemeral';
   // Never silently store PII unencrypted in a deployed environment.
   if (env.NODE_ENV === 'production' && demask === 'ephemeral') {
@@ -105,6 +129,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
       baseUrl: env.KIMI_BASE_URL,
       model: env.KIMI_MODEL,
       thinking: env.KIMI_THINKING,
+    },
+    litellm: {
+      baseUrl: env.LITELLM_BASE_URL,
+      model: env.LITELLM_MODEL,
     },
     jira: {
       configured: Boolean(env.JIRA_BASE_URL && env.JIRA_EMAIL && env.JIRA_API_TOKEN),

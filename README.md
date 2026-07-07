@@ -92,7 +92,7 @@ With none of the env vars set, everything runs fully offline (in-memory repos, r
 
 Copy `.env.example` to `.env` and set what you need — each dependency flips from offline to real when its vars appear:
 
-- **LLM** — set `ANTHROPIC_API_KEY` (Claude cascade) **or** `KIMI_API_KEY` (Kimi/Moonshot; `kimi-k2.6`/`k2.7-code` with thinking). Kimi takes precedence when both are set.
+- **LLM** — set `ANTHROPIC_API_KEY` (Claude cascade), `KIMI_API_KEY` (Kimi/Moonshot, with thinking), or `LITELLM_API_KEY` (any OpenAI-compatible / LiteLLM gateway). Precedence: Kimi > Anthropic > LiteLLM > offline stub. An **independent judge** provider (`ARBITER_JUDGE_*` / LiteLLM) powers the LLM-as-judge Eval Workbench so it isn't marking its own homework.
 - **Postgres** (`DATABASE_URL`) — persistence + Row-Level Security. `pnpm docker:up && pnpm migrate`.
 - **Presidio** (`PRESIDIO_ANALYZER_URL` / `_ANONYMIZER_URL`) — real PII/secret detection.
 - **Jira** (`JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN`) — read-only fetch-by-key.
