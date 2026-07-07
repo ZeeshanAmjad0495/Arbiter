@@ -20,7 +20,7 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Twenty-six QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Twenty-seven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
@@ -48,6 +48,7 @@ Twenty-six QA/QE workflows, all running through the pipeline above, each with pa
 24. **Data-Quality / DB-Assertion Drafter** *(Wave 6)* — data-quality assertions (not-null, unique, referential integrity, range, freshness) for a schema; columns grounded.
 25. **Migration / ETL Test-Plan Generator** *(Wave 6)* — a phased plan (pre/migrate/post/rollback) with **mandatory reconciliation** and a testable rollback plan.
 26. **Executive Quality-Report Drafter** *(Wave 6)* — turns QA metrics/notes into a leadership report (headline, RAG status, key metrics with trends, risks, recommendations).
+27. **Synthetic / PII-safe Test Data Generator** *(Wave 4, output-gated)* — generates synthetic rows for a schema; the **generated output is re-scanned for PII** and any leaked real PII value (email/SSN/card/secret) blocks export.
 
 Plus the platform features around them:
 
@@ -118,7 +119,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 26 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 27 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -133,7 +134,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Waves 0–6):** the governed workbench — guardrail spine, **twenty-six workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
+**Shipped (Waves 0–6):** the governed workbench — guardrail spine, **twenty-seven workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
 
 The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. The 26 shipped workflows complete the value-ordered wave plan. Remaining work is **substrate/hardening** (tracked in `docs/ROADMAP.md`): the RAG knowledge substrate, WriteGate (gated writes to sandbox targets), an output PII re-scan gate (unblocks Synthetic Test-Data), real OTLP→Langfuse export, LiteLLM judge independence, and the full LLM Eval Workbench — plus the lower-ROI Wave-6 authoring tail (persona/mobile/mutation/chaos/DR/SRE/estimation drafters).
 

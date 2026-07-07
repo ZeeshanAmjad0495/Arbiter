@@ -73,9 +73,11 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 - **Contract Drift Analyzer** — diffs two contract versions into breaking vs non-breaking changes with consumer impact + migration actions; changed paths grounded.
 - **Security Abuse-Case Challenger** — defensive abuse-case taxonomy (authz/injection/IDOR/replay/rate-limit/business-logic) with impact × likelihood + a test idea each.
 
-**Deferred (with reason):**
-- **Synthetic / PII-safe Test Data Generator** — needs a real *output* PII re-scan gate (the pipeline sanitizes input only today); shipping it without that gate would be unsafe theater. Pull in with the output-sanitization step.
-- **Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager** — straightforward authoring workflows; next Wave-4 increment.
+**Shipped ✓ (with the gate it needed):**
+- **Synthetic / PII-safe Test Data Generator** — now shipped **with the output PII re-scan gate**: `rescanOutput` re-scans the generated artifact and blocks export if any real PII *value* (email/SSN/card/phone/secret) leaks. Label-prone recognizers (MEMBER_ID/INTERNAL_URL) are excluded from the block set so a legitimate `member_email` column never false-blocks — and the MEMBER_ID recognizer was tightened to require a digit so column names aren't redacted from grounding context. Proven in `tests/rescan.test.ts`.
+
+**Still deferred:**
+- **Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager** — straightforward authoring workflows; add on demand.
 
 ## Wave 5 — Manual/exploratory depth & corpus reasoning *(shipped ✓)*
 

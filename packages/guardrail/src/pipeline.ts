@@ -51,6 +51,9 @@ export interface GuardrailRequest<T> {
   readonly artifactType?: string;
   readonly autoApprove?: boolean;
   readonly blockOnUngrounded?: boolean;
+  /** Opt-in: re-scan the generated artifact for PII; any finding blocks export
+   *  (for generators whose output must itself be PII-safe, e.g. synthetic data). */
+  readonly rescanOutput?: boolean;
 }
 
 export interface GuardrailDeps {
@@ -65,6 +68,24 @@ export interface GuardrailDeps {
 }
 
 const EMPTY_GROUNDING: GroundingReport = { claims: [], violations: 0, blockedExport: false };
+
+// The output PII re-scan blocks on leaked PII *values*, not schema/column labels.
+// Label-prone recognizers (MEMBER_ID matches "member_email", INTERNAL_URL matches
+// hostnames-as-field-names) are excluded so a legitimate column name never blocks
+// synthetic-data generation; real emails/SSNs/cards/secrets still do.
+const OUTPUT_PII_BLOCK_TYPES = new Set([
+  'PERSON',
+  'EMAIL_ADDRESS',
+  'PHONE_NUMBER',
+  'US_SSN',
+  'CREDIT_CARD',
+  'API_KEY',
+  'JWT',
+  'PASSWORD',
+  'IP_ADDRESS',
+  'DATE_OF_BIRTH',
+  'GENERIC_SECRET',
+]);
 
 function artifactStatusFor(decision: ReviewDecision): ArtifactStatus {
   switch (decision) {
@@ -241,11 +262,32 @@ export class GuardrailEngine {
         blockedExport: grounding.blockedExport,
       });
 
+      // 4b. Output PII re-scan (opt-in). The generated artifact must itself be
+      // PII-safe (e.g. a synthetic test-data generator). Any finding blocks
+      // export exactly like a grounding violation — you cannot ship generated PII.
+      let outputPiiBlocked = false;
+      if (req.rescanOutput && generation.output != null) {
+        const rescan = await withSpan(root, 'validate', { [ArbiterAttr.STAGE]: 'validate' }, async (span) => {
+          const report = await this.deps.sanitizer.sanitize(JSON.stringify(generation.output));
+          span.setAttribute(ArbiterAttr.SANITIZE_FINDINGS, report.findings.length);
+          return report;
+        });
+        const blocking = rescan.findings.filter((f) => OUTPUT_PII_BLOCK_TYPES.has(f.type));
+        outputPiiBlocked = rescan.blocked || blocking.length > 0;
+        await appendAudit('validate', {
+          stage: 'output_pii_rescan',
+          findings: blocking.length,
+          types: [...new Set(blocking.map((f) => f.type))],
+          blocked: outputPiiBlocked,
+        });
+      }
+
       // 5. Gate (review).
       const review = await withSpan(root, 'gate', { [ArbiterAttr.STAGE]: 'gate' }, async (span) => {
         const decision = this.deps.review.decide({
           riskTier: req.riskTier,
           groundingBlocked: grounding.blockedExport,
+          outputPiiBlocked,
           ...(req.autoApprove !== undefined ? { autoApprove: req.autoApprove } : {}),
         });
         span.setAttribute(ArbiterAttr.REVIEW_DECISION, decision.decision);

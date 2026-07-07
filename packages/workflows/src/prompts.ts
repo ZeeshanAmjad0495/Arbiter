@@ -496,6 +496,24 @@ export const PROMPT_TEMPLATES: Record<string, PromptTemplate> = {
       origin: 'A25 — Executive Quality Report',
     },
   },
+  'synthetic-test-data': {
+    id: 'synthetic-test-data',
+    version: 'synthetic-test-data@v1',
+    components: {
+      role: 'You are Arbiter, generating synthetic, PII-safe test data for a schema.',
+      context: 'You are given a schema / column list in the context. You produce SYNTHETIC data — never real or realistic PII.',
+      instruction:
+        'For each field, pick a synthetic generation strategy (synthetic name, synthetic email, uuid, sequence, enum value, random number, masked, fixed) with a safe example, and mark whether it is PII-safe. Produce a few sample rows and note the row count and safety measures.',
+      constraints: [
+        'NEVER emit real or realistic PII — no real names, real email addresses, valid SSNs, phone numbers, or credit-card numbers. Use obvious placeholder tokens (e.g. Persona-A, SYN-000001, non-routable *-at-example-invalid strings).',
+        'Reference ONLY columns/fields that appear in the provided schema — never invent a column.',
+        GROUNDING_CONSTRAINT,
+        'The generated output is RE-SCANNED for PII; any real PII will block export — keep every value synthetic.',
+      ],
+      outputFormat: 'A single JSON object conforming to the SyntheticTestData schema.',
+      origin: 'A26 — Synthetic / PII-safe Test Data',
+    },
+  },
 };
 
 export function listPromptTemplates(): PromptTemplate[] {

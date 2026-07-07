@@ -51,6 +51,8 @@ export interface WorkflowDef<T> {
   system: string;
   ui: WorkflowUi;
   extractClaims?: (output: T) => GroundingClaimInput[];
+  /** Re-scan the generated artifact for PII; any finding blocks export (e.g. synthetic data). */
+  rescanOutput?: boolean;
   stub: (contextText: string, opts: { simulateHallucination?: boolean }) => T;
 }
 
@@ -1955,6 +1957,66 @@ const execQualityReport = define<ExecQualityReport>({
   }),
 });
 
+/* 27. Synthetic / PII-safe Test Data Generator (output re-scan gate) - */
+
+const SyntheticTestData = z.object({
+  summary: z.string(),
+  fields: z.array(
+    z.object({
+      field: z.string(),
+      strategy: z.enum(['synthetic_name', 'synthetic_email', 'uuid', 'sequence', 'enum_value', 'random_number', 'masked', 'fixed']),
+      example: z.string(),
+      piiSafe: z.boolean(),
+    }),
+  ),
+  sampleRows: z.array(z.string()),
+  rowCount: z.number().int().positive(),
+  safetyNotes: z.array(z.string()),
+});
+export type SyntheticTestData = z.infer<typeof SyntheticTestData>;
+
+const syntheticTestData = define<SyntheticTestData>({
+  id: 'synthetic-test-data',
+  label: 'Synthetic / PII-safe Test Data Generator',
+  description: 'Generate synthetic, PII-safe test data for a schema. The output is re-scanned for PII — any real PII in the generated data blocks export.',
+  artifactType: 'synthetic_test_data',
+  promptVersion: 'synthetic-test-data@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Schema to generate synthetic test data for',
+  schema: SyntheticTestData,
+  system: systemFor('synthetic-test-data'),
+  // The whole point: the generated data must be PII-safe. The output re-scan gate
+  // blocks export if any real PII slipped into the sample rows.
+  rescanOutput: true,
+  ui: {
+    requirementLabel: 'Schema (+ fields in context)',
+    requirementPlaceholder: 'Paste the schema/columns to generate synthetic rows for…',
+    sampleRequirement: 'Generate synthetic, PII-safe test data for the redemptions schema.',
+    sampleContext: {
+      title: 'redemptions schema',
+      content: 'Columns: member_id, member_name, member_email, points_balance, points_redeemed, order_total.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.fields.map((f) => ({ kind: 'field' as const, value: f.field })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Synthetic rows for the redemptions schema using placeholder tokens — no real names, emails, or ids.`,
+    fields: [
+      { field: 'member_id', strategy: 'sequence', example: 'SYN-000001', piiSafe: true },
+      { field: 'member_name', strategy: 'synthetic_name', example: 'Persona-A', piiSafe: true },
+      { field: 'member_email', strategy: 'synthetic_email', example: 'persona-a-at-example-invalid', piiSafe: true },
+      { field: 'points_balance', strategy: 'random_number', example: '120', piiSafe: true },
+      { field: 'order_total', strategy: 'random_number', example: '4200', piiSafe: true },
+    ],
+    sampleRows: [
+      'member_id=SYN-000001 | member_name=Persona-A | member_email=persona-a-at-example-invalid | points_balance=120 | order_total=4200',
+      'member_id=SYN-000002 | member_name=Persona-B | member_email=persona-b-at-example-invalid | points_balance=0 | order_total=1599',
+    ],
+    rowCount: 2,
+    safetyNotes: ['All values are placeholder tokens; emails are deliberately non-routable.', 'Output is re-scanned — any real PII would block export.'],
+  }),
+});
+
 /* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
@@ -1986,6 +2048,7 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   dataQualityAssertions,
   migrationTestPlan,
   execQualityReport,
+  syntheticTestData,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));
@@ -2043,6 +2106,7 @@ export function runWorkflow(
       schema: def.schema,
       tier: 'default',
       ...(def.extractClaims ? { extractClaims: def.extractClaims } : {}),
+      ...(def.rescanOutput ? { rescanOutput: true } : {}),
       ...(input.autoApprove !== undefined ? { autoApprove: input.autoApprove } : {}),
       stub: () => def.stub(contextText, { simulateHallucination: input.simulateHallucination ?? false }),
     },

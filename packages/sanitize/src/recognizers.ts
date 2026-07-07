@@ -48,8 +48,10 @@ export const CUSTOM_RECOGNIZERS: readonly Recognizer[] = [
   { type: 'GENERIC_SECRET', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/:@]+@/gi, score: 0.9 },
   // Bearer / opaque authorization tokens.
   { type: 'API_KEY', pattern: /\bBearer\s+[A-Za-z0-9._~+/-]{12,}={0,2}/g, score: 0.85 },
-  // Domain identifiers.
-  { type: 'MEMBER_ID', pattern: /\b(?:MEM|MBR|MEMBER)[-_]?[A-Z0-9]{5,}\b/gi, score: 0.7 },
+  // Domain identifiers. Require a digit in the id body so English words like
+  // "member_email"/"member_status" (schema column names) are not redacted as
+  // member ids — real member ids (MEM123456, MEMBER-A1B2C3) always contain digits.
+  { type: 'MEMBER_ID', pattern: /\b(?:MEM|MBR|MEMBER)[-_]?(?=[A-Z0-9]{5,}\b)[A-Z0-9]*\d[A-Z0-9]*\b/gi, score: 0.7 },
   { type: 'MEMBER_ID', pattern: /\bmember(?:\s*id)?\s*[:#]\s*([A-Z0-9-]{5,})\b/gi, score: 0.75, group: 1 },
   // Internal infrastructure references.
   {

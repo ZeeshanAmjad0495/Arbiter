@@ -51,6 +51,10 @@ const noRawPii = (needles: string[]): Grader => ({
     return leaked.length === 0 ? null : `raw PII leaked: ${leaked.join(', ')}`;
   },
 });
+const noExportBlock: Grader = {
+  name: 'output re-scan did not block (PII-safe output)',
+  check: (o) => (o.review.decision !== 'needs_changes' ? null : `output was blocked (decision=${o.review.decision})`),
+};
 const groundingBlocks: Grader = {
   name: 'ungrounded output blocks export + needs_changes',
   check: (o) =>
@@ -365,6 +369,14 @@ const CASES: EvalCase[] = [
       },
     ],
     graders: [notNull, nonEmptyArray('keyMetrics'), nonEmptyArray('recommendations'), hasString('headline')],
+  },
+  {
+    name: 'synthetic-test-data: grounded columns, PII-safe output passes the re-scan gate',
+    workflow: 'synthetic-test-data',
+    requirement: 'Generate synthetic, PII-safe test data for the redemptions schema.',
+    context: [{ title: 'redemptions schema', content: 'Columns: member_id, member_name, member_email, points_balance, points_redeemed, order_total.' }],
+    // The stub emits placeholder tokens only, so the output re-scan finds no PII and the run is NOT blocked.
+    graders: [notNull, grounded, nonEmptyArray('fields'), nonEmptyArray('sampleRows'), noExportBlock],
   },
 ];
 
