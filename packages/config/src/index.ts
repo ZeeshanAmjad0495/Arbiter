@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { ConfigError } from '@arbiter/core';
 
+/** An optional URL that treats a blank .env value ("") as unset instead of failing validation. */
+const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
+
 /**
  * Central runtime config. Every external dependency degrades to an offline mode
  * when its env vars are absent, so the whole platform runs with zero infra for
@@ -10,10 +13,10 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   ARBITER_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
-  DATABASE_URL: z.string().url().optional(),
+  DATABASE_URL: optionalUrl,
 
-  PRESIDIO_ANALYZER_URL: z.string().url().optional(),
-  PRESIDIO_ANONYMIZER_URL: z.string().url().optional(),
+  PRESIDIO_ANALYZER_URL: optionalUrl,
+  PRESIDIO_ANONYMIZER_URL: optionalUrl,
 
   ARBITER_DEMASK_KEY: z.string().optional(),
 
@@ -30,11 +33,11 @@ const EnvSchema = z.object({
   KIMI_THINKING: z.enum(['enabled', 'disabled']).default('enabled'),
 
   // Jira read-only fetch-by-ticket-key (Phase 1 grounding pull-forward).
-  JIRA_BASE_URL: z.string().url().optional(),
+  JIRA_BASE_URL: optionalUrl,
   JIRA_EMAIL: z.string().optional(),
   JIRA_API_TOKEN: z.string().optional(),
 
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   OTEL_SERVICE_NAME: z.string().default('arbiter'),
 
   ARBITER_API_PORT: z.coerce.number().int().positive().default(4310),
