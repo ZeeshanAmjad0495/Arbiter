@@ -23,7 +23,7 @@ import {
 import type { UserId } from '@arbiter/core';
 import { type GuardrailEngine, buildChunks, computeQualityMetrics, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
 import { sanitizeJson } from '@arbiter/sanitize';
-import { InMemoryTracer, renderTrace } from '@arbiter/telemetry';
+import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
 import { fetchJiraIssue } from './jira';
 
@@ -114,6 +114,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     telemetry: config.telemetry,
     demask: config.demask,
   };
+
+  // Real OTLP export when an endpoint is configured; best-effort, never blocks a request.
+  const otlpExporter = config.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    ? new OtlpHttpExporter(config.env.OTEL_EXPORTER_OTLP_ENDPOINT, config.env.OTEL_SERVICE_NAME)
+    : null;
 
   /**
    * Resolve the acting project from the `x-arbiter-project` header, falling back
@@ -224,6 +229,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     );
 
     const root = tracer.roots[0];
+    if (otlpExporter) void otlpExporter.export(tracer.roots);
     return reply.send({
       workflow: def.id,
       outputView: def.ui.outputView,

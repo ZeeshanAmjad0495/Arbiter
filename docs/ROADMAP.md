@@ -101,7 +101,7 @@ Everything consciously deferred during Waves 0–1, with why it's safe today and
 | Item | Status today | Pull in when |
 |---|---|---|
 | **De-mask store tenant-scoping** (project-scoped `resolve`) + **Postgres-backed, row-authorized de-mask store** | safe — `resolve` is unused in the prod path; store is process-local, AES-GCM in RAM | before any de-mask rehydration / real multi-tenant (with WriteGate re-hydration) |
-| **Real OTLP → Langfuse exporter** | in-memory, OTel-shaped tracer behind `createTracer()` | when observability / Langfuse is stood up |
+| ~~**Real OTLP → Langfuse exporter**~~ ✅ shipped | `OtlpHttpExporter` + pure `toOtlpTraces` converter; the API flushes per-request spans to `OTEL_EXPORTER_OTLP_ENDPOINT` (→ Collector → Langfuse), best-effort, never blocks a request (`tests/otlp.test.ts`) | point it at a live collector |
 | **Server-side Presidio custom recognizers** | app-side custom recognizers cover member IDs/secrets/internal URLs in both engines | when centralizing PHI-coverage tuning |
 | ~~**Locale-aware sanitizer recognizers**~~ ✅ shipped | IBAN, E.164 international phone, UK NINO — anchored + validated, live in both engine paths (`tests/locale-sanitize.test.ts`) | — (extend with more locales on demand) |
 | **Kimi read-failure distinct logging** | body-read failure swallowed to `''` | minor observability polish |
