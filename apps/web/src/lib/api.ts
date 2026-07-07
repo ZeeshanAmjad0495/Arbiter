@@ -1,5 +1,53 @@
 // Thin client for the Arbiter API. In dev, Vite proxies these paths to :4310.
 
+// The selected project is initialized synchronously from localStorage so the
+// very first request already carries it, then sent as `x-arbiter-project` on
+// every call — the server scopes all reads/writes (and Postgres RLS) to it.
+let activeProjectId: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem('arbiter-project') : null;
+
+export function getActiveProject(): string | null {
+  return activeProjectId;
+}
+
+export function setActiveProject(id: string | null): void {
+  activeProjectId = id;
+  if (typeof localStorage === 'undefined') return;
+  if (id) localStorage.setItem('arbiter-project', id);
+  else localStorage.removeItem('arbiter-project');
+}
+
+function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (activeProjectId) headers.set('x-arbiter-project', activeProjectId);
+  return fetch(path, { ...init, headers });
+}
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  classification: string;
+  createdAt: string;
+}
+
+export async function listProjects(): Promise<{ defaultProjectId: string; projects: ProjectInfo[] }> {
+  const res = await apiFetch('/v1/projects');
+  if (!res.ok) throw new Error(`projects ${res.status}`);
+  return res.json();
+}
+
+export async function createProject(body: { name: string; classification?: string }): Promise<ProjectInfo> {
+  const res = await apiFetch('/v1/projects', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Create project failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()).project;
+}
+
 export interface Finding {
   type: string;
   start: number;
@@ -92,19 +140,19 @@ export interface StatusInfo {
 }
 
 export async function getStatus(): Promise<StatusInfo> {
-  const res = await fetch('/api/status');
+  const res = await apiFetch('/api/status');
   if (!res.ok) throw new Error(`status ${res.status}`);
   return res.json();
 }
 
 export async function listWorkflows(): Promise<WorkflowMeta[]> {
-  const res = await fetch('/v1/workflows');
+  const res = await apiFetch('/v1/workflows');
   if (!res.ok) throw new Error(`workflows ${res.status}`);
   return (await res.json()).workflows;
 }
 
 export async function runWorkflow(id: string, body: RunRequest): Promise<Outcome> {
-  const res = await fetch(`/v1/workflows/${id}/run`, {
+  const res = await apiFetch(`/v1/workflows/${id}/run`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -117,7 +165,7 @@ export async function runWorkflow(id: string, body: RunRequest): Promise<Outcome
 }
 
 export async function fetchJira(key: string): Promise<ContextInput> {
-  const res = await fetch(`/v1/jira/${encodeURIComponent(key)}`);
+  const res = await apiFetch(`/v1/jira/${encodeURIComponent(key)}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message ?? `Jira fetch failed (${res.status})`);
   return data.context;
@@ -159,13 +207,13 @@ export interface ReviewLog {
 }
 
 export async function listReviews(): Promise<ReviewItem[]> {
-  const res = await fetch('/v1/reviews');
+  const res = await apiFetch('/v1/reviews');
   if (!res.ok) throw new Error(`reviews ${res.status}`);
   return (await res.json()).reviews;
 }
 
 export async function getArtifact(id: string): Promise<{ artifact: Artifact; reviews: ReviewLog[] }> {
-  const res = await fetch(`/v1/artifacts/${id}`);
+  const res = await apiFetch(`/v1/artifacts/${id}`);
   if (!res.ok) throw new Error(`artifact ${res.status}`);
   return res.json();
 }
@@ -187,7 +235,7 @@ export interface PromptTemplate {
 }
 
 export async function listPrompts(): Promise<PromptTemplate[]> {
-  const res = await fetch('/v1/prompts');
+  const res = await apiFetch('/v1/prompts');
   if (!res.ok) throw new Error(`prompts ${res.status}`);
   return (await res.json()).prompts;
 }
@@ -196,7 +244,7 @@ export async function submitReview(
   id: string,
   body: { decision: 'approved' | 'rejected' | 'needs_changes'; editedContent?: unknown; dwellMs?: number },
 ): Promise<{ artifact: Artifact; review: ReviewLog }> {
-  const res = await fetch(`/v1/artifacts/${id}/review`, {
+  const res = await apiFetch(`/v1/artifacts/${id}/review`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),

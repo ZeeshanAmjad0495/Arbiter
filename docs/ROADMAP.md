@@ -39,6 +39,16 @@ Not user-facing workflows; they feed the **ground** stage or compute over captur
 | 3 | **Grounded Release-Readiness inputs** | M | ✅ shipped — structured release signals rendered into the grounded context pack; cited pass ratios/percentages are grounding-validated (invented figures block export) |
 | — | ~~Gated Defect Write-Back → Jira~~ | — | **Deferred** — conflicts with "never write to the connected Jira." Will target a sandbox Jira only, with explicit per-target authorization. |
 
+## Wave 1.5 — Multi-Project Surface *(shipped ✓)*
+
+The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped repos, Postgres `FORCE ROW LEVEL SECURITY` with a per-transaction GUC); only the entry surface was pinned to one demo project. This slice exposes it:
+
+- **Project CRUD** — `GET /v1/projects`, `POST /v1/projects`; a stable default project is provisioned idempotently at boot.
+- **Per-request project scope** — the `x-arbiter-project` header resolves the acting project (falling back to the default) and is threaded into every repo call → RLS GUC per transaction. Invalid id → 400, unknown → 404.
+- **UI project switcher** — header dropdown + create-new; selection persists and scopes every page.
+- **HTTP-level isolation test** — `tests/projects.test.ts` proves one project cannot read another's review queue or artifacts.
+- *Deferred:* per-**user** authorization of which projects a caller may select (arrives with SSO); per-project connector config (Jira/OpenAPI moving off global env) lands with the Wave 2 knowledge/connector substrate.
+
 ## Wave 2 — Core QE differentiators (the QA→QE leap)
 
 Test Strategy Generator · Test Plan Generator (traces to strategy) · Requirements Traceability & Coverage Matrix (id-aware validator) · Compliance Control-Mapping & Evidence Pack (healthcare/PHI differentiator) · Quality Metrics Aggregation Layer *(substrate)*.

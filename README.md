@@ -75,6 +75,7 @@ Next-gen SvelteKit UI (Workbench · Review Queue · Prompt Library)
 Fastify API  ──  GET /v1/workflows · POST /v1/workflows/:id/run
                  GET /v1/reviews · POST /v1/artifacts/:id/review
                  GET /v1/prompts · GET /v1/jira/:key
+                 GET /v1/projects · POST /v1/projects   (x-arbiter-project scopes every call)
         │
 GuardrailEngine:  sanitize → ground → generate → validate → gate
         │              │           │          │          │
@@ -107,7 +108,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 - **Sanitization** on every call — default-deny on uncertain fields; credentials hard-block + rotate-alert; credentials are *never* stored.
 - **Grounding validation** — ungrounded references block export.
 - **Risk-tiered review** — high/medium pre-approval, low sampled post-hoc; reviewer edit-diffs and dwell-time captured as tripwires + flywheel signal.
-- **Multi-tenant isolation** — mandatory `project_id` filters + Postgres `FORCE ROW LEVEL SECURITY` (fail-closed) backstop.
+- **Multi-tenant isolation** — mandatory `project_id` filters + Postgres `FORCE ROW LEVEL SECURITY` (fail-closed) backstop. The active project is selected per request (`x-arbiter-project` header / UI switcher) and threaded into every repo call, which sets the RLS GUC per transaction — a caller cannot read or write across the project boundary (HTTP-level isolation test in `tests/projects.test.ts`).
 - **Append-only audit trail** — who prompted, which sources, which prompt/model version, who approved which change — exportable as compliance evidence.
 - **Encrypted de-masking store** (AES-256-GCM) with retention control, for re-hydrating approved outputs.
 

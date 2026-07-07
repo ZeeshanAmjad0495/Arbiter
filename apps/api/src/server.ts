@@ -1,11 +1,23 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getConfig } from '@arbiter/config';
-import { ArtifactId, AuditEvent, ReviewLog, newAuditEventId, newReviewLogId, nowIso, unifiedDiff } from '@arbiter/core';
-import type { ProjectId, UserId } from '@arbiter/core';
+import {
+  ArtifactId,
+  AuditEvent,
+  DataClassification,
+  Project,
+  ProjectId,
+  ReviewLog,
+  newAuditEventId,
+  newProjectId,
+  newReviewLogId,
+  nowIso,
+  unifiedDiff,
+} from '@arbiter/core';
+import type { UserId } from '@arbiter/core';
 import type { GuardrailEngine } from '@arbiter/guardrail';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, renderTrace } from '@arbiter/telemetry';
@@ -50,15 +62,24 @@ const RunBody = z.object({
 
 const JIRA_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
 
+const CreateProjectBody = z.object({
+  name: z.string().min(1).max(120),
+  classification: DataClassification.default('internal'),
+});
+
 export interface ServerDeps {
   readonly engine: GuardrailEngine;
-  readonly demoProjectId: ProjectId;
-  readonly demoActorId: UserId;
+  /** Project used when a request carries no `x-arbiter-project` header (offline/demo default). */
+  readonly defaultProjectId: ProjectId;
+  /** Single acting user until per-user SSO lands (see Deferred). */
+  readonly defaultActorId: UserId;
   readonly webDir?: string;
+  /** Defaults to true; tests pass false to keep output readable. */
+  readonly logger?: boolean;
 }
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: deps.logger ?? true });
   const config = getConfig();
 
   // Minimal auth guard until Google SSO (Phase 1): when ARBITER_API_TOKEN is set,
@@ -82,8 +103,55 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     demask: config.demask,
   };
 
+  /**
+   * Resolve the acting project from the `x-arbiter-project` header, falling back
+   * to the default project when unset. The resolved id is passed to every
+   * project-scoped repo call — which is what sets the Postgres RLS GUC per
+   * transaction — so a caller can never read/write across the project boundary.
+   * (Per-USER authorization of which projects a caller may select arrives with
+   * SSO; today the API token trusts the internal caller's project choice.)
+   */
+  async function resolveProject(request: FastifyRequest, reply: FastifyReply): Promise<ProjectId | null> {
+    const header = request.headers['x-arbiter-project'];
+    const raw = Array.isArray(header) ? header[0] : header;
+    if (!raw) return deps.defaultProjectId;
+    const parsed = ProjectId.safeParse(raw);
+    if (!parsed.success) {
+      reply.status(400).send({ error: 'invalid_project_id' });
+      return null;
+    }
+    const project = await deps.engine.repos.projects.get(parsed.data);
+    if (!project) {
+      reply.status(404).send({ error: 'unknown_project' });
+      return null;
+    }
+    return parsed.data;
+  }
+
   app.get('/health', async () => ({ status: 'ok', modes }));
   app.get('/api/status', async () => ({ modes, models: config.models, integrations: { jira: config.jira.configured } }));
+
+  // ----- Projects (multi-tenant surface) -----
+  app.get('/v1/projects', async () => {
+    const projects = await deps.engine.repos.projects.list();
+    return {
+      defaultProjectId: deps.defaultProjectId,
+      projects: projects.map((p) => ({ id: p.id, name: p.name, classification: p.classification, createdAt: p.createdAt })),
+    };
+  });
+
+  app.post('/v1/projects', async (request, reply) => {
+    const parsed = CreateProjectBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const project = Project.parse({
+      id: newProjectId(),
+      name: parsed.data.name,
+      classification: parsed.data.classification,
+      createdAt: nowIso(),
+    });
+    await deps.engine.repos.projects.upsert(project);
+    return reply.status(201).send({ project });
+  });
 
   // Read-only Jira fetch-by-ticket-key (grounding pull-forward).
   app.get<{ Params: { key: string } }>('/v1/jira/:key', async (request, reply) => {
@@ -116,13 +184,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     const body = parsed.data;
 
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+
     const tracer = new InMemoryTracer();
     const outcome = await runWorkflow(
       deps.engine,
       def,
       {
-        projectId: deps.demoProjectId,
-        actorId: deps.demoActorId,
+        projectId,
+        actorId: deps.defaultActorId,
         requirement: body.requirement,
         context: body.context,
         ...(body.riskTier ? { riskTier: body.riskTier } : {}),
@@ -161,8 +232,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   // ----- Review queue -----
-  app.get('/v1/reviews', async () => {
-    const pending = await deps.engine.repos.artifacts.listByStatus(deps.demoProjectId, ['in_review']);
+  app.get('/v1/reviews', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const pending = await deps.engine.repos.artifacts.listByStatus(projectId, ['in_review']);
     return {
       reviews: pending.map((a) => ({
         id: a.id,
@@ -179,9 +252,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.get<{ Params: { id: string } }>('/v1/artifacts/:id', async (request, reply) => {
     const idCheck = ArtifactId.safeParse(request.params.id);
     if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
-    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, idCheck.data);
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const artifact = await deps.engine.repos.artifacts.get(projectId, idCheck.data);
     if (!artifact) return reply.status(404).send({ error: 'not_found' });
-    const reviews = await deps.engine.repos.reviews.listByArtifact(deps.demoProjectId, artifact.id);
+    const reviews = await deps.engine.repos.reviews.listByArtifact(projectId, artifact.id);
     return { artifact, reviews };
   });
 
@@ -192,7 +267,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     const { decision, editedContent, dwellMs } = parsed.data;
 
-    const artifact = await deps.engine.repos.artifacts.get(deps.demoProjectId, idCheck.data);
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const artifact = await deps.engine.repos.artifacts.get(projectId, idCheck.data);
     if (!artifact) return reply.status(404).send({ error: 'not_found' });
 
     const statusFor = { approved: 'approved', rejected: 'rejected', needs_changes: 'in_review' } as const;
@@ -214,12 +291,12 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const now = nowIso();
     const review = ReviewLog.parse({
       id: newReviewLogId(),
-      projectId: deps.demoProjectId,
+      projectId,
       artifactId: artifact.id,
       decision,
       mode: 'pre_approval',
       riskTier: artifact.riskTier,
-      reviewer: deps.demoActorId,
+      reviewer: deps.defaultActorId,
       ...(editDiff ? { editDiff } : {}),
       ...(dwellMs !== undefined ? { dwellMs } : {}),
       decidedAt: now,
@@ -227,8 +304,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
     const audit = AuditEvent.parse({
       id: newAuditEventId(),
-      projectId: deps.demoProjectId,
-      actorId: deps.demoActorId,
+      projectId,
+      actorId: deps.defaultActorId,
       workflowRunId: artifact.workflowRunId,
       action: 'gate.decision',
       sources: [],
@@ -238,7 +315,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
     // One atomic transaction: status + review + audit commit together.
     const updated = await deps.engine.repos.applyReviewDecision({
-      projectId: deps.demoProjectId,
+      projectId,
       artifactId: artifact.id,
       status: statusFor[decision],
       ...(contentPatch !== undefined ? { content: contentPatch } : {}),
