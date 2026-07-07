@@ -67,7 +67,7 @@ Plus the platform features around them:
 - **Review Queue** — non-auto-approved artifacts wait for human approval; the reviewer edits, and the **edit-diff + dwell-time are captured** (the feedback-flywheel signal). High/medium risk require pre-approval.
 - **Export** — Markdown / JSON / CSV / Gherkin for any artifact.
 - **Prompt Library** — versioned **6-component templates** (Role · Context · Instruction · Constraints · Output format) seeded from the training-doc A1–A8 pack; the single source of truth each workflow's prompt is composed from.
-- **Grounding sources** — upload an **OpenAPI/JSON-Schema** spec or **fetch a Jira ticket by key** (read-only) to ground generation against real project facts.
+- **Grounding sources** — upload an **OpenAPI/JSON-Schema** spec, **fetch a Jira ticket by key** (read-only), or add docs to the **per-project Knowledge store** and toggle **"Use project knowledge"** to retrieve relevant chunks into context (RAG) — generation grounds against real project facts without re-pasting.
 - **Eval gate** — code-based graders run every workflow through the pipeline in CI (`pnpm eval`) and block regressions.
 
 ## Why this beats "QAs just use ChatGPT"
@@ -108,6 +108,7 @@ Fastify API  ──  GET /v1/workflows · POST /v1/workflows/:id/run
                  GET /v1/reviews · POST /v1/artifacts/:id/review
                  GET /v1/prompts · GET /v1/jira/:key
                  GET /v1/projects · POST /v1/projects   (x-arbiter-project scopes every call)
+                 GET/POST/DELETE /v1/knowledge · GET /v1/metrics
         │
 GuardrailEngine:  sanitize → ground → generate → validate → gate
         │              │           │          │          │

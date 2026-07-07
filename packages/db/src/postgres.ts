@@ -4,6 +4,9 @@ import {
   Artifact,
   type ArtifactId,
   AuditEvent,
+  KnowledgeChunk,
+  type KnowledgeDocId,
+  KnowledgeDocument,
   Project,
   type ProjectId,
   ReviewLog,
@@ -13,6 +16,7 @@ import {
 import type {
   ArtifactRepository,
   AuditRepository,
+  KnowledgeRepository,
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
@@ -275,6 +279,50 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
   const ARTIFACT_COLS =
     'id, project_id, workflow_run_id, type, status, risk_tier, content, prompt_version, model, created_by, created_at';
 
+  const knowledge: KnowledgeRepository = {
+    async addDocument(doc: KnowledgeDocument, chunks: KnowledgeChunk[]) {
+      await withProjectTx(pool, doc.projectId, async (client) => {
+        await client.query(
+          `INSERT INTO knowledge_documents (id, project_id, title, source_type, citation, classification, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [doc.id, doc.projectId, doc.title, doc.sourceType, doc.citation, doc.classification, doc.createdAt],
+        );
+        for (const c of chunks) {
+          await client.query(
+            `INSERT INTO knowledge_chunks (id, project_id, doc_id, ordinal, content, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [c.id, c.projectId, c.docId, c.ordinal, c.content, c.createdAt],
+          );
+        }
+      });
+      return doc;
+    },
+    async listDocuments(projectId: ProjectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, title, source_type, citation, classification, created_at
+           FROM knowledge_documents WHERE project_id = $1 ORDER BY created_at DESC`,
+          [projectId],
+        );
+        return rows.map(rowToKnowledgeDoc);
+      });
+    },
+    async deleteDocument(projectId: ProjectId, docId: KnowledgeDocId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rowCount } = await client.query(`DELETE FROM knowledge_documents WHERE project_id = $1 AND id = $2`, [projectId, docId]);
+        return (rowCount ?? 0) > 0;
+      });
+    },
+    async listChunks(projectId: ProjectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, doc_id, ordinal, content, created_at FROM knowledge_chunks WHERE project_id = $1 ORDER BY doc_id, ordinal`,
+          [projectId],
+        );
+        return rows.map(rowToKnowledgeChunk);
+      });
+    },
+  };
+
   return {
     kind: 'postgres',
     projects,
@@ -282,6 +330,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     artifacts,
     audit,
     reviews,
+    knowledge,
     async applyReviewDecision(write) {
       return withProjectTx(pool, write.projectId, async (client) => {
         const { rows } =
@@ -364,6 +413,29 @@ function rowToAuditEvent(row: Record<string, unknown>): AuditEvent {
     // node-pg auto-parses jsonb.
     sources: row.sources ?? [],
     detail: row.detail ?? {},
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToKnowledgeDoc(row: Record<string, unknown>): KnowledgeDocument {
+  return KnowledgeDocument.parse({
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    sourceType: row.source_type,
+    citation: row.citation,
+    classification: row.classification,
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToKnowledgeChunk(row: Record<string, unknown>): KnowledgeChunk {
+  return KnowledgeChunk.parse({
+    id: row.id,
+    projectId: row.project_id,
+    docId: row.doc_id,
+    ordinal: row.ordinal,
+    content: row.content,
     createdAt: iso(row.created_at as Date | string),
   });
 }

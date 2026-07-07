@@ -3,6 +3,9 @@ import type {
   ArtifactId,
   ArtifactStatus,
   AuditEvent,
+  KnowledgeChunk,
+  KnowledgeDocId,
+  KnowledgeDocument,
   Project,
   ProjectId,
   ReviewLog,
@@ -13,6 +16,7 @@ import type {
 import type {
   ArtifactRepository,
   AuditRepository,
+  KnowledgeRepository,
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
@@ -117,6 +121,33 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  const knowledgeDocs = new Map<string, KnowledgeDocument>();
+  const knowledgeChunks: KnowledgeChunk[] = [];
+  const knowledgeRepo: KnowledgeRepository = {
+    async addDocument(doc: KnowledgeDocument, chunks: KnowledgeChunk[]) {
+      knowledgeDocs.set(doc.id, doc);
+      for (const c of chunks) knowledgeChunks.push(c);
+      return doc;
+    },
+    async listDocuments(projectId: ProjectId) {
+      return [...knowledgeDocs.values()]
+        .filter((d) => d.projectId === projectId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    },
+    async deleteDocument(projectId: ProjectId, docId: KnowledgeDocId) {
+      const doc = knowledgeDocs.get(docId);
+      if (!doc || doc.projectId !== projectId) return false;
+      knowledgeDocs.delete(docId);
+      for (let i = knowledgeChunks.length - 1; i >= 0; i--) {
+        if (knowledgeChunks[i]!.docId === docId) knowledgeChunks.splice(i, 1);
+      }
+      return true;
+    },
+    async listChunks(projectId: ProjectId) {
+      return knowledgeChunks.filter((c) => c.projectId === projectId);
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
@@ -124,6 +155,7 @@ export function createMemoryRepositories(): RepositoryBundle {
     artifacts: artifactRepo,
     audit: auditRepo,
     reviews: reviewRepo,
+    knowledge: knowledgeRepo,
     async applyReviewDecision(write) {
       const updated = await artifactRepo.update(write.projectId, write.artifactId, {
         status: write.status,

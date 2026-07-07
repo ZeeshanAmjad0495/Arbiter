@@ -149,6 +149,39 @@ export interface RunRequest {
   riskTier: 'low' | 'medium' | 'high';
   autoApprove: boolean;
   simulateHallucination: boolean;
+  useKnowledge?: boolean;
+}
+
+export interface KnowledgeDoc {
+  id: string;
+  title: string;
+  sourceType: string;
+  classification: string;
+  createdAt: string;
+}
+
+export async function listKnowledge(): Promise<KnowledgeDoc[]> {
+  const res = await apiFetch('/v1/knowledge');
+  if (!res.ok) throw new Error(`knowledge ${res.status}`);
+  return (await res.json()).documents;
+}
+
+export async function addKnowledge(body: { title: string; content: string; sourceType?: string }): Promise<{ id: string; chunks: number }> {
+  const res = await apiFetch('/v1/knowledge', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Add knowledge failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()).document;
+}
+
+export async function deleteKnowledge(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/knowledge/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`delete knowledge ${res.status}`);
 }
 
 export interface StatusInfo {

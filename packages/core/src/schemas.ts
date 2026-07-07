@@ -259,6 +259,45 @@ export const User = z.object({
 export type User = z.infer<typeof User>;
 
 /* ------------------------------------------------------------------ *
+ * Per-project knowledge (RAG substrate) — project-scoped, read-only   *
+ * ground source. Documents are chunked; retrieval assembles a context  *
+ * pack so generation is project-aware without re-pasting.             *
+ * ------------------------------------------------------------------ */
+
+export const KnowledgeDocId = z.string().uuid().brand<'KnowledgeDocId'>();
+export type KnowledgeDocId = z.infer<typeof KnowledgeDocId>;
+export const KnowledgeChunkId = z.string().uuid().brand<'KnowledgeChunkId'>();
+export type KnowledgeChunkId = z.infer<typeof KnowledgeChunkId>;
+
+export const newKnowledgeDocId = (): KnowledgeDocId => KnowledgeDocId.parse(randomUUID());
+export const newKnowledgeChunkId = (): KnowledgeChunkId => KnowledgeChunkId.parse(randomUUID());
+
+export const KnowledgeSourceType = z.enum(['jira', 'confluence', 'openapi', 'schema', 'repo', 'upload', 'paste', 'other']);
+export type KnowledgeSourceType = z.infer<typeof KnowledgeSourceType>;
+
+export const KnowledgeDocument = z.object({
+  id: KnowledgeDocId,
+  projectId: ProjectId,
+  title: z.string(),
+  sourceType: KnowledgeSourceType.default('paste'),
+  citation: z.string(),
+  classification: DataClassification.default('internal'),
+  createdAt: z.string().datetime(),
+});
+export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
+
+export const KnowledgeChunk = z.object({
+  id: KnowledgeChunkId,
+  projectId: ProjectId,
+  docId: KnowledgeDocId,
+  /** 0-based position within the document. */
+  ordinal: z.number().int().nonnegative(),
+  content: z.string(),
+  createdAt: z.string().datetime(),
+});
+export type KnowledgeChunk = z.infer<typeof KnowledgeChunk>;
+
+/* ------------------------------------------------------------------ *
  * The end-to-end outcome of one pass through the guardrail pipeline.  *
  * ------------------------------------------------------------------ */
 

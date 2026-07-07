@@ -8,17 +8,20 @@ import {
   ArtifactId,
   AuditEvent,
   DataClassification,
+  KnowledgeDocId,
+  KnowledgeDocument,
   Project,
   ProjectId,
   ReviewLog,
   newAuditEventId,
+  newKnowledgeDocId,
   newProjectId,
   newReviewLogId,
   nowIso,
   unifiedDiff,
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
-import { type GuardrailEngine, computeQualityMetrics } from '@arbiter/guardrail';
+import { type GuardrailEngine, buildChunks, computeQualityMetrics, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
@@ -58,6 +61,15 @@ const RunBody = z.object({
   riskTier: z.enum(['low', 'medium', 'high']).optional(),
   autoApprove: z.boolean().default(false),
   simulateHallucination: z.boolean().default(false),
+  /** Pull top-k relevant chunks from the project's knowledge store into context (RAG). */
+  useKnowledge: z.boolean().default(false),
+});
+
+const KnowledgeBody = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1).max(200_000),
+  sourceType: z.enum(['jira', 'confluence', 'openapi', 'schema', 'repo', 'upload', 'paste', 'other']).default('paste'),
+  classification: DataClassification.default('internal'),
 });
 
 const JIRA_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
@@ -187,6 +199,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const projectId = await resolveProject(request, reply);
     if (!projectId) return reply;
 
+    // RAG: pull the most relevant project-knowledge chunks into the context pack
+    // so generation is project-aware and cited facts can ground against them.
+    let context = body.context;
+    if (body.useKnowledge) {
+      const retrieved = await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4);
+      context = [...toKnowledgeContext(retrieved), ...context];
+    }
+
     const tracer = new InMemoryTracer();
     const outcome = await runWorkflow(
       deps.engine,
@@ -195,7 +215,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         projectId,
         actorId: deps.defaultActorId,
         requirement: body.requirement,
-        context: body.context,
+        context,
         ...(body.riskTier ? { riskTier: body.riskTier } : {}),
         autoApprove: body.autoApprove,
         simulateHallucination: body.simulateHallucination,
@@ -229,6 +249,46 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       audit: outcome.audit.map((a) => ({ action: a.action, at: a.createdAt, detail: a.detail })),
       trace: root ? { text: renderTrace(root), tree: root } : null,
     });
+  });
+
+  // ----- Per-project knowledge store (RAG ground source) -----
+  app.get('/v1/knowledge', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const docs = await deps.engine.repos.knowledge.listDocuments(projectId);
+    return { documents: docs.map((d) => ({ id: d.id, title: d.title, sourceType: d.sourceType, classification: d.classification, createdAt: d.createdAt })) };
+  });
+
+  app.post('/v1/knowledge', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = KnowledgeBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const { title, content, sourceType, classification } = parsed.data;
+    // Sanitize before storing — knowledge is a ground source, never a PHI sink.
+    const safe = (await deps.engine.sanitizer.sanitize(content)).sanitizedText;
+    const docId = newKnowledgeDocId();
+    const doc = KnowledgeDocument.parse({
+      id: docId,
+      projectId,
+      title,
+      sourceType,
+      citation: `knowledge://${title.toLowerCase().replace(/\s+/g, '-')}`,
+      classification,
+      createdAt: nowIso(),
+    });
+    const chunks = buildChunks(projectId, docId, safe);
+    await deps.engine.repos.knowledge.addDocument(doc, chunks);
+    return reply.status(201).send({ document: { id: doc.id, title: doc.title, chunks: chunks.length } });
+  });
+
+  app.delete<{ Params: { id: string } }>('/v1/knowledge/:id', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const idCheck = KnowledgeDocId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    const ok = await deps.engine.repos.knowledge.deleteDocument(projectId, idCheck.data);
+    return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
   });
 
   // ----- Quality metrics (the project's quality trend line) -----

@@ -3,6 +3,9 @@ import type {
   ArtifactId,
   ArtifactStatus,
   AuditEvent,
+  KnowledgeChunk,
+  KnowledgeDocId,
+  KnowledgeDocument,
   Project,
   ProjectId,
   ReviewLog,
@@ -60,6 +63,19 @@ export interface ReviewDecisionWrite {
   audit: AuditEvent;
 }
 
+/**
+ * Per-project knowledge store (RAG substrate). Documents + their chunks are
+ * project-scoped; `searchChunks` is the retrieval seam (lexical today, swappable
+ * to Postgres FTS / pgvector behind this same interface).
+ */
+export interface KnowledgeRepository {
+  addDocument(doc: KnowledgeDocument, chunks: KnowledgeChunk[]): Promise<KnowledgeDocument>;
+  listDocuments(projectId: ProjectId): Promise<KnowledgeDocument[]>;
+  deleteDocument(projectId: ProjectId, docId: KnowledgeDocId): Promise<boolean>;
+  /** All chunks for a project (retrieval scores over these in-process today). */
+  listChunks(projectId: ProjectId): Promise<KnowledgeChunk[]>;
+}
+
 export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
@@ -67,6 +83,7 @@ export interface RepositoryBundle {
   readonly artifacts: ArtifactRepository;
   readonly audit: AuditRepository;
   readonly reviews: ReviewRepository;
+  readonly knowledge: KnowledgeRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).
