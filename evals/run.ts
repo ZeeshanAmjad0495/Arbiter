@@ -274,6 +274,51 @@ const CASES: EvalCase[] = [
     context: [{ title: 'Checkout API (v2)', content: 'POST /v2/checkout/redeem. Fields: member_id, points_redeemed, order_total, discount_applied, points_balance.' }],
     graders: [notNull, nonEmptyArray('abuseCases'), hasString('summary'), hasString('highestSeverity')],
   },
+  {
+    name: 'exploratory-charter: mission + tour-tagged test ideas + timebox',
+    workflow: 'exploratory-charter',
+    requirement: 'Explore the loyalty-points redemption flow at checkout for a 60-minute session.',
+    context: [{ title: 'Checkout redemption', content: 'POST /v2/checkout/redeem. Fields: member_id, points_redeemed, order_total, discount_applied, points_balance.' }],
+    graders: [notNull, nonEmptyArray('testIdeas'), nonEmptyArray('areas'), hasString('mission')],
+  },
+  {
+    name: 'uat-script: business-readable scripts traced to grounded requirement ids',
+    workflow: 'uat-script',
+    requirement: 'Write UAT acceptance scripts for the loyalty-redemption requirements.',
+    context: [
+      {
+        title: 'Redemption requirements',
+        content: 'REQ-201: a member can redeem points and see the discount applied. REQ-202: a member cannot redeem more points than their balance.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('scripts'), nonEmptyArray('traceIds'), hasString('summary')],
+  },
+  {
+    name: 'cross-req-inconsistency: cite-two-sources conflict, both ids grounded',
+    workflow: 'cross-req-inconsistency',
+    requirement: 'Check these redemption requirements for cross-requirement inconsistencies.',
+    context: [
+      {
+        title: 'Redemption requirements',
+        content:
+          'REQ-301: redeemed points are refunded to points_balance if the order is cancelled. REQ-302: discount_applied equals points_redeemed 1:1. REQ-303: redeemed points are non-refundable once an order is placed.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('inconsistencies'), nonEmptyArray('reviewedRequirementIds'), hasString('summary')],
+  },
+  {
+    name: 'spec-change-impact: impacted ids grounded, breaking vs behavioral',
+    workflow: 'spec-change-impact',
+    requirement: 'Analyze the impact of making redemption idempotent on the existing requirements and tests.',
+    context: [
+      {
+        title: 'Spec change + affected artifacts',
+        content:
+          'CHANGE: redemption requires an idempotency_key and is idempotent on retry. Affected: REQ-101, REQ-102, TC-1, TC-40, endpoint POST /v2/checkout/redeem.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('impacts'), nonEmptyArray('affectedTests'), hasString('summary')],
+  },
 ];
 
 async function main(): Promise<void> {

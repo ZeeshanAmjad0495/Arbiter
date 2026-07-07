@@ -20,7 +20,7 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Seventeen QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Twenty-one QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
@@ -39,6 +39,10 @@ Seventeen QA/QE workflows, all running through the pipeline above, each with pas
 15. **API Test Generator** *(Wave 4)* — a grounded API suite (happy/negative/boundary/auth/contract) from an endpoint spec, with status codes and response assertions.
 16. **Contract Drift Analyzer** *(Wave 4)* — diffs two contract versions into **breaking vs non-breaking** changes with consumer impact and migration actions, grounded in the contracts.
 17. **Security Abuse-Case Challenger** *(Wave 4)* — defensive abuse cases across a security taxonomy (authz, injection, IDOR, replay, rate-limit, business-logic) with impact, likelihood, and a test idea each.
+18. **Exploratory Charter Generator** *(Wave 5)* — a session-based charter (mission, areas, tour-tagged test ideas, oracles/risks, timebox) — guides exploration, not a rigid script.
+19. **UAT Acceptance-Script Generator** *(Wave 5)* — business-readable scripts (persona, plain steps, expected outcome) **traced to grounded requirement ids**, for human sign-off.
+20. **Cross-Requirement Inconsistency Checker** *(Wave 5)* — finds conflicts between requirements; **each inconsistency must cite two requirement ids that exist in context** (grounded cite-two-sources guard).
+21. **Spec-Change Impact Analyzer** *(Wave 5)* — from an old→new change, enumerates impacted requirements/tests/endpoints (breaking / behavioral / additive), ids grounded.
 
 Plus the platform features around them:
 
@@ -109,7 +113,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 17 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 21 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -124,9 +128,9 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Waves 0–4):** the governed workbench — guardrail spine, **seventeen workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
+**Shipped (Waves 0–5):** the governed workbench — guardrail spine, **twenty-one workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
 
-The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 5** (exploratory charters, UAT scripts, cross-requirement inconsistency & spec-change impact — RAG-dependent) plus the remaining Wave-4 authoring (PII-safe synthetic data behind an output re-scan gate, accessibility & performance drafters).
+The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 6** (broadening authoring — smoke/regression/mobile/persona/DQ/migration/DR/SRE drafters) plus the tracked deferrals (RAG substrate, WriteGate, output PII re-scan gate, real OTLP export, LiteLLM judge independence, full Eval Workbench).
 
 **Read-only Jira — enforced in code:** Arbiter never writes to the connected Jira workspace; every Jira request refuses any method but GET/HEAD before it is sent.
 

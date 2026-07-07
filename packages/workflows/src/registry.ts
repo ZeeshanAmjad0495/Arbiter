@@ -1440,6 +1440,260 @@ const securityAbuseCases = define<SecurityAbuseCases>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Wave 5 — Manual/exploratory depth & corpus reasoning                *
+ * (paste-in-context today; RAG will auto-populate the corpus later)   *
+ * ------------------------------------------------------------------ */
+
+/* 18. Exploratory Testing Charter Generator ------------------------- */
+
+const ExploratoryCharter = z.object({
+  summary: z.string(),
+  mission: z.string(),
+  areas: z.array(z.string()),
+  testIdeas: z.array(
+    z.object({
+      idea: z.string(),
+      tour: z.enum(['feature', 'data', 'interruption', 'error', 'scenario', 'claims', 'performance', 'security']),
+      priority: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+  oraclesAndRisks: z.array(z.string()),
+  dataNeeds: z.array(z.string()),
+  timeboxMinutes: z.number().int().positive(),
+  notesForDebrief: z.string(),
+});
+export type ExploratoryCharter = z.infer<typeof ExploratoryCharter>;
+
+const exploratoryCharter = define<ExploratoryCharter>({
+  id: 'exploratory-charter',
+  label: 'Exploratory Charter Generator',
+  description: 'Structure a session-based exploratory testing charter: mission, areas, tour-tagged test ideas, oracles/risks, data needs, and a timebox.',
+  artifactType: 'exploratory_charter',
+  promptVersion: 'exploratory-charter@v1',
+  defaultRiskTier: 'low',
+  inputNoun: 'Feature / area to explore',
+  schema: ExploratoryCharter,
+  system: systemFor('exploratory-charter'),
+  ui: {
+    requirementLabel: 'Feature / area to explore',
+    requirementPlaceholder: 'Describe the feature or area to run an exploratory session against…',
+    sampleRequirement: 'Explore the loyalty-points redemption flow at checkout for a 60-minute session.',
+    sampleContext: {
+      title: 'Checkout redemption (context)',
+      content: 'POST /v2/checkout/redeem. Fields: member_id, points_redeemed, order_total, discount_applied, points_balance.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} A 60-minute charter probing redemption correctness, partial-failure behavior, and authorization around points_balance.`,
+    mission: 'Explore how points redemption behaves under boundary balances, interruptions, and cross-member attempts.',
+    areas: ['Redemption math (order_total vs points_redeemed)', 'Partial-failure / retry behavior', 'Authorization on points_balance'],
+    testIdeas: [
+      { idea: 'Redeem exactly the full points_balance, then one more point.', tour: 'data', priority: 'high' },
+      { idea: 'Kill the request mid-redemption and retry.', tour: 'interruption', priority: 'high' },
+      { idea: 'Attempt redemption against another member_id.', tour: 'security', priority: 'high' },
+      { idea: 'Redeem, then refund the order — does points_balance restore?', tour: 'scenario', priority: 'medium' },
+    ],
+    oraclesAndRisks: ['order_total must always equal price minus discount_applied.', 'points_balance must never go negative or double-count.'],
+    dataNeeds: ['A member near their points_balance boundary; a second member for authorization checks.'],
+    timeboxMinutes: 60,
+    notesForDebrief: 'Capture any state where points were deducted without a matching discount for a follow-up bug.',
+  }),
+});
+
+/* 19. UAT Acceptance-Script Generator ------------------------------- */
+
+const UatScript = z.object({
+  summary: z.string(),
+  scripts: z.array(
+    z.object({
+      title: z.string(),
+      requirementId: z.string(),
+      persona: z.string(),
+      steps: z.array(z.string()).min(1),
+      expectedOutcome: z.string(),
+      acceptanceCriterion: z.string(),
+    }),
+  ),
+  traceIds: z.array(z.string()),
+  signOffOwnedBy: z.string(),
+});
+export type UatScript = z.infer<typeof UatScript>;
+
+const uatScript = define<UatScript>({
+  id: 'uat-script',
+  label: 'UAT Acceptance-Script Generator',
+  description: 'Draft business-readable UAT scripts (persona, plain steps, expected outcome) traced to requirement ids, for human sign-off.',
+  artifactType: 'uat_script',
+  promptVersion: 'uat-script@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Requirements / acceptance criteria to write UAT scripts for',
+  schema: UatScript,
+  system: systemFor('uat-script'),
+  ui: {
+    requirementLabel: 'Requirements (+ acceptance criteria in context)',
+    requirementPlaceholder: 'Paste the requirements with ids (REQ-#) and their acceptance criteria…',
+    sampleRequirement: 'Write UAT acceptance scripts for the loyalty-redemption requirements.',
+    sampleContext: {
+      title: 'Redemption requirements',
+      content:
+        'REQ-201: A member can redeem points at checkout and see the discount applied to the order total. ' +
+        'REQ-202: A member cannot redeem more points than their available balance.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>([...o.traceIds, ...o.scripts.map((s) => s.requirementId)]);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Two business-readable UAT scripts covering REQ-201 (discount applied) and REQ-202 (insufficient balance blocked).`,
+    scripts: [
+      {
+        title: 'Redeem points for a discount',
+        requirementId: 'REQ-201',
+        persona: 'A logged-in member with points available',
+        steps: ['Add an item to the cart and go to checkout.', 'Choose to redeem loyalty points.', 'Confirm the order.'],
+        expectedOutcome: 'The order total is reduced by the redeemed points and the discount is shown.',
+        acceptanceCriterion: 'The member sees the discount applied and a lower order total.',
+      },
+      {
+        title: 'Cannot over-redeem points',
+        requirementId: 'REQ-202',
+        persona: 'A member with a small points balance',
+        steps: ['Go to checkout with points available.', 'Attempt to redeem more points than the balance.'],
+        expectedOutcome: 'Redemption is prevented with a clear message; no discount is applied.',
+        acceptanceCriterion: 'The member cannot redeem more than their available balance.',
+      },
+    ],
+    traceIds: ['REQ-201', 'REQ-202'],
+    signOffOwnedBy: 'Business owner (human)',
+  }),
+});
+
+/* 20. Cross-Requirement Inconsistency Checker (cite-two-sources) ----- */
+
+const CrossReqInconsistency = z.object({
+  summary: z.string(),
+  reviewedRequirementIds: z.array(z.string()),
+  inconsistencies: z.array(
+    z.object({
+      requirementA: z.string(),
+      requirementB: z.string(),
+      type: z.enum(['contradiction', 'overlap', 'ambiguity', 'gap', 'ordering', 'terminology']),
+      description: z.string(),
+      severity: z.enum(['low', 'medium', 'high']),
+      recommendation: z.string(),
+    }),
+  ),
+});
+export type CrossReqInconsistency = z.infer<typeof CrossReqInconsistency>;
+
+const crossReqInconsistency = define<CrossReqInconsistency>({
+  id: 'cross-req-inconsistency',
+  label: 'Cross-Requirement Inconsistency Checker',
+  description: 'Find conflicts between requirements — each inconsistency must cite TWO requirement ids that exist in context (grounded cite-two-sources guard).',
+  artifactType: 'cross_req_inconsistency',
+  promptVersion: 'cross-req-inconsistency@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Requirements to check for inconsistencies (paste several)',
+  schema: CrossReqInconsistency,
+  system: systemFor('cross-req-inconsistency'),
+  ui: {
+    requirementLabel: 'Requirements (paste several with ids)',
+    requirementPlaceholder: 'Paste multiple requirements with ids (REQ-#) to check against each other…',
+    sampleRequirement: 'Check these redemption requirements for cross-requirement inconsistencies.',
+    sampleContext: {
+      title: 'Redemption requirements',
+      content:
+        'REQ-301: Redeemed points are refunded to points_balance if the order is cancelled. ' +
+        'REQ-302: discount_applied equals points_redeemed at a 1:1 value. ' +
+        'REQ-303: Redeemed points are non-refundable once an order is placed.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>(o.reviewedRequirementIds);
+    for (const inc of o.inconsistencies) {
+      ids.add(inc.requirementA);
+      ids.add(inc.requirementB);
+    }
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} One high-severity contradiction: REQ-301 refunds cancelled-order points while REQ-303 makes redeemed points non-refundable once an order is placed.`,
+    reviewedRequirementIds: ['REQ-301', 'REQ-302', 'REQ-303'],
+    inconsistencies: [
+      {
+        requirementA: 'REQ-301',
+        requirementB: 'REQ-303',
+        type: 'contradiction',
+        description: 'REQ-301 refunds points to points_balance on cancellation, but REQ-303 says redeemed points are non-refundable once an order is placed — a cancelled placed-order is undefined.',
+        severity: 'high',
+        recommendation: 'Clarify whether cancellation after placement refunds points; reconcile REQ-301 and REQ-303 into one rule.',
+      },
+    ],
+  }),
+});
+
+/* 21. Spec-Change Impact Analyzer ----------------------------------- */
+
+const SpecChangeImpact = z.object({
+  summary: z.string(),
+  changeSummary: z.string(),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  impacts: z.array(
+    z.object({
+      impactedId: z.string(),
+      kind: z.enum(['requirement', 'test', 'endpoint', 'doc']),
+      impact: z.enum(['breaking', 'behavioral', 'additive', 'none']),
+      description: z.string(),
+      action: z.string(),
+    }),
+  ),
+  affectedTests: z.array(z.string()),
+});
+export type SpecChangeImpact = z.infer<typeof SpecChangeImpact>;
+
+const specChangeImpact = define<SpecChangeImpact>({
+  id: 'spec-change-impact',
+  label: 'Spec-Change Impact Analyzer',
+  description: 'Given an old→new spec change, enumerate impacted requirements/tests/endpoints (breaking/behavioral/additive) grounded in context, with follow-up actions.',
+  artifactType: 'spec_change_impact',
+  promptVersion: 'spec-change-impact@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Spec change to analyze (attach old/new + affected ids as context)',
+  schema: SpecChangeImpact,
+  system: systemFor('spec-change-impact'),
+  ui: {
+    requirementLabel: 'Spec change (+ old/new + affected ids in context)',
+    requirementPlaceholder: 'Paste the old and new spec plus the requirements/tests/endpoints it touches…',
+    sampleRequirement: 'Analyze the impact of making redemption idempotent on the existing requirements and tests.',
+    sampleContext: {
+      title: 'Spec change + affected artifacts',
+      content:
+        'CHANGE: redemption now requires an idempotency_key and is idempotent on retry. Affected: REQ-101 (points deducted once), REQ-102 (discount reflects amount), TC-1 (valid redemption), TC-40 (retry behavior), endpoint POST /v2/checkout/redeem.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => {
+    const ids = new Set<string>([...o.affectedTests, ...o.impacts.map((i) => i.impactedId)]);
+    return [...ids].filter((v) => v.length > 0).map((value) => ({ kind: 'requirement' as const, value }));
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Making redemption idempotent is mostly behavioral but breaks the retry test (TC-40) and requires a new idempotency assertion.`,
+    changeSummary: 'Redemption requires an idempotency_key and must be idempotent on retry.',
+    riskLevel: 'medium',
+    impacts: [
+      { impactedId: 'REQ-101', kind: 'requirement', impact: 'behavioral', description: 'Points-deducted-once now holds across retries, not just single calls.', action: 'Update REQ-101 wording to state idempotent retries.' },
+      { impactedId: 'TC-40', kind: 'test', impact: 'breaking', description: 'The retry test asserted a second call re-deducts; that is now wrong.', action: 'Rewrite TC-40 to assert a retried redemption is a no-op.' },
+      { impactedId: 'POST /v2/checkout/redeem', kind: 'endpoint', impact: 'behavioral', description: 'Now requires idempotency_key on the request.', action: 'Add a contract test for the new required field.' },
+    ],
+    affectedTests: ['TC-1', 'TC-40'],
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -1461,6 +1715,10 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   apiTestGenerator,
   contractDrift,
   securityAbuseCases,
+  exploratoryCharter,
+  uatScript,
+  crossReqInconsistency,
+  specChangeImpact,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

@@ -77,9 +77,15 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 - **Synthetic / PII-safe Test Data Generator** — needs a real *output* PII re-scan gate (the pipeline sanitizes input only today); shipping it without that gate would be unsafe theater. Pull in with the output-sanitization step.
 - **Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager** — straightforward authoring workflows; next Wave-4 increment.
 
-## Wave 5 — Manual/exploratory depth & corpus reasoning (RAG-dependent)
+## Wave 5 — Manual/exploratory depth & corpus reasoning *(shipped ✓)*
 
-Exploratory Charter Generator + session structuring · UAT Acceptance-Script Generator + sign-off · Cross-Requirement Inconsistency Checker (cite-two-sources guard) · Spec-Change Impact Analyzer · Locale-aware sanitizer recognizers *(component hardening)*.
+Shipped as paste-in-context workflows (RAG will later auto-populate the corpus instead of manual paste — same schemas):
+
+- **Exploratory Charter Generator** — session-based charter (mission, areas, tour-tagged test ideas, oracles/risks, timebox); guides exploration rather than scripting it.
+- **UAT Acceptance-Script Generator** — business-readable scripts (persona, plain steps, expected outcome) traced to grounded requirement ids; sign-off human-owned.
+- **Cross-Requirement Inconsistency Checker** — conflicts between requirements; **cite-two-sources** guard enforced by grounding (each inconsistency's two requirement ids must both exist in context).
+- **Spec-Change Impact Analyzer** — old→new change → impacted requirement/test/endpoint ids (breaking/behavioral/additive) with actions; impacted ids grounded.
+- *Deferred:* Locale-aware sanitizer recognizers (component hardening) — see the deferred table.
 
 ## Wave 6 — Broadening authoring + tracked deferrals (later)
 
