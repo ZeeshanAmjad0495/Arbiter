@@ -18,7 +18,7 @@ import {
   unifiedDiff,
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
-import type { GuardrailEngine } from '@arbiter/guardrail';
+import { type GuardrailEngine, computeQualityMetrics } from '@arbiter/guardrail';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
@@ -229,6 +229,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       audit: outcome.audit.map((a) => ({ action: a.action, at: a.createdAt, detail: a.detail })),
       trace: root ? { text: renderTrace(root), tree: root } : null,
     });
+  });
+
+  // ----- Quality metrics (the project's quality trend line) -----
+  app.get('/v1/metrics', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    return { metrics: await computeQualityMetrics(deps.engine.repos, projectId) };
   });
 
   // ----- Review queue -----

@@ -86,6 +86,7 @@
   <nav class="mainnav">
     <a href="/" class:active={$page.url.pathname === '/'}>Workbench</a>
     <a href="/review" class:active={$page.url.pathname.startsWith('/review')}>Review Queue</a>
+    <a href="/insights" class:active={$page.url.pathname.startsWith('/insights')}>Insights</a>
     <a href="/prompts" class:active={$page.url.pathname.startsWith('/prompts')}>Prompts</a>
   </nav>
   <div class="topbar-right">

@@ -99,6 +99,9 @@ export function createMemoryRepositories(): RepositoryBundle {
     async listByRun(projectId: ProjectId, runId: WorkflowRunId) {
       return audit.filter((e) => e.projectId === projectId && e.workflowRunId === runId);
     },
+    async listByProject(projectId: ProjectId) {
+      return audit.filter((e) => e.projectId === projectId);
+    },
   };
 
   const reviewRepo: ReviewRepository = {
@@ -108,6 +111,9 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
     async listByArtifact(projectId, artifactId) {
       return reviews.filter((r) => r.projectId === projectId && r.artifactId === artifactId);
+    },
+    async listByProject(projectId) {
+      return reviews.filter((r) => r.projectId === projectId);
     },
   };
 

@@ -38,12 +38,16 @@ export interface ArtifactRepository {
 export interface AuditRepository {
   append(event: AuditEvent): Promise<AuditEvent>;
   listByRun(projectId: ProjectId, runId: WorkflowRunId): Promise<AuditEvent[]>;
+  /** All audit for a project — feeds the quality-metrics aggregation. */
+  listByProject(projectId: ProjectId): Promise<AuditEvent[]>;
 }
 
 /** Append-only human-review history. */
 export interface ReviewRepository {
   append(review: ReviewLog): Promise<ReviewLog>;
   listByArtifact(projectId: ProjectId, artifactId: ArtifactId): Promise<ReviewLog[]>;
+  /** All reviews for a project — feeds the quality-metrics aggregation. */
+  listByProject(projectId: ProjectId): Promise<ReviewLog[]>;
 }
 
 /** A governed review decision — artifact update + review log + audit, written atomically. */

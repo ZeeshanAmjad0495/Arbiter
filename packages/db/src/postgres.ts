@@ -215,6 +215,16 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
         return rows.map(rowToAuditEvent);
       });
     },
+    async listByProject(projectId: ProjectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, actor_id, workflow_run_id, action, input_sha256, prompt_version, model, sources, detail, created_at
+           FROM audit_events WHERE project_id = $1 ORDER BY created_at`,
+          [projectId],
+        );
+        return rows.map(rowToAuditEvent);
+      });
+    },
   };
 
   const reviews: ReviewRepository = {
@@ -246,6 +256,16 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
           `SELECT id, project_id, artifact_id, decision, mode, risk_tier, reviewer, edit_diff, dwell_ms, decided_at, created_at
            FROM reviews WHERE project_id = $1 AND artifact_id = $2 ORDER BY created_at`,
           [projectId, artifactId],
+        );
+        return rows.map(rowToReview);
+      });
+    },
+    async listByProject(projectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, artifact_id, decision, mode, risk_tier, reviewer, edit_diff, dwell_ms, decided_at, created_at
+           FROM reviews WHERE project_id = $1 ORDER BY created_at`,
+          [projectId],
         );
         return rows.map(rowToReview);
       });

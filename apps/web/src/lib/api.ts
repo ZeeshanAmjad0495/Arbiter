@@ -35,6 +35,23 @@ export async function listProjects(): Promise<{ defaultProjectId: string; projec
   return res.json();
 }
 
+export interface QualityMetrics {
+  projectId: string;
+  totals: { artifacts: number; reviews: number };
+  byStatus: Record<string, number>;
+  byRiskTier: Record<string, number>;
+  byWorkflow: { type: string; count: number; approved: number; rejected: number }[];
+  review: { decided: number; approvalRate: number | null; editRate: number | null; medianDwellMs: number | null };
+  grounding: { validated: number; withViolations: number; violationRate: number | null };
+  generatedAt: string;
+}
+
+export async function getMetrics(): Promise<QualityMetrics> {
+  const res = await apiFetch('/v1/metrics');
+  if (!res.ok) throw new Error(`metrics ${res.status}`);
+  return (await res.json()).metrics;
+}
+
 export async function createProject(body: { name: string; classification?: string }): Promise<ProjectInfo> {
   const res = await apiFetch('/v1/projects', {
     method: 'POST',
