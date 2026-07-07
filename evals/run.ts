@@ -208,6 +208,39 @@ const CASES: EvalCase[] = [
     ],
     graders: [notNull, grounded, nonEmptyArray('controls'), hasString('summary'), hasString('attestationOwnedBy')],
   },
+  {
+    name: 'ci-failure-triage: failed tests grounded in the log + ranked hypotheses',
+    workflow: 'ci-failure-triage',
+    requirement: 'Triage this CI failure on the checkout suite.',
+    context: [
+      {
+        title: 'CI run #1487 log',
+        content:
+          'FAILED tests/checkout/test_redeem_points_valid — AssertionError: order_total expected 90 got 100. ' +
+          'FAILED tests/checkout/test_auth_cross_member — TimeoutError after 30s calling points-service. 2 failed, 128 passed.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('failedTests'), nonEmptyArray('rootCauseHypotheses'), hasString('summary')],
+  },
+  {
+    name: 'flaky-test-advisor: patterns grounded in history + quarantine candidates',
+    workflow: 'flaky-test-advisor',
+    requirement: 'Triage the flaky tests in the checkout suite.',
+    context: [
+      {
+        title: 'Test history (last 20 runs)',
+        content: 'test_redeem_points_valid: pass/pass/fail/pass/fail. test_points_balance_race: fails only when run in parallel. test_checkout_smoke: stable.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('signals'), scoreInRange('flakinessScore'), hasString('summary')],
+  },
+  {
+    name: 'incident-postmortem: timeline + typed action items + regression back-prop',
+    workflow: 'incident-postmortem',
+    requirement: 'Checkout redemptions failed ~22m after a deploy: points_redeemed deducted but order_total did not update; ~1,400 orders affected. Rolled back; recovered.',
+    context: [],
+    graders: [notNull, nonEmptyArray('timeline'), nonEmptyArray('actionItems'), nonEmptyArray('regressionTests'), hasString('rootCause')],
+  },
 ];
 
 async function main(): Promise<void> {

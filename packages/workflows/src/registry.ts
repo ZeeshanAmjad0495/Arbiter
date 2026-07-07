@@ -1069,6 +1069,205 @@ const complianceMapping = define<ComplianceMapping>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Wave 3 — CI reliability & operational learning                      *
+ * ------------------------------------------------------------------ */
+
+/* 12. CI Failure Triage / Root-Cause Drafter ------------------------ */
+
+const CiFailureTriage = z.object({
+  summary: z.string(),
+  suspectedCategory: z.enum(['product_bug', 'flaky_test', 'infra', 'dependency', 'config', 'test_bug', 'environment', 'unknown']),
+  confidence: z.enum(['low', 'medium', 'high']),
+  failedTests: z.array(
+    z.object({
+      name: z.string(),
+      failureType: z.enum(['assertion', 'timeout', 'error', 'crash', 'setup']),
+      evidence: z.string(),
+    }),
+  ),
+  rootCauseHypotheses: z.array(
+    z.object({ hypothesis: z.string(), likelihood: z.enum(['low', 'medium', 'high']), supportingEvidence: z.string() }),
+  ),
+  recommendedActions: z.array(z.string()),
+  rerunSuggested: z.boolean(),
+  ownerHint: z.string(),
+});
+export type CiFailureTriage = z.infer<typeof CiFailureTriage>;
+
+const ciFailureTriage = define<CiFailureTriage>({
+  id: 'ci-failure-triage',
+  label: 'CI Failure Triage',
+  description: 'Classify a CI failure (product bug / flaky / infra / dependency / config) and draft ranked root-cause hypotheses grounded in the log.',
+  artifactType: 'ci_failure_triage',
+  promptVersion: 'ci-failure-triage@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'CI failure to triage (attach the job log as context)',
+  schema: CiFailureTriage,
+  system: systemFor('ci-failure-triage'),
+  ui: {
+    requirementLabel: 'CI failure (+ job log in context)',
+    requirementPlaceholder: 'Describe the failing pipeline and paste the CI job log…',
+    sampleRequirement: 'Triage this CI failure on the checkout suite and draft the likely root cause.',
+    sampleContext: {
+      title: 'CI run #1487 log',
+      content:
+        'FAILED tests/checkout/test_redeem_points_valid — AssertionError: order_total expected 90 got 100. ' +
+        'FAILED tests/checkout/test_auth_cross_member — TimeoutError after 30s calling points-service. 2 failed, 128 passed. Runner: ci-node-7.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.failedTests.map((t) => ({ kind: 'entity' as const, value: t.name })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} 2 failures on the checkout suite: a real assertion mismatch on order_total and a points-service timeout that looks environmental — likely a mixed cause, not a single flaky run.`,
+    suspectedCategory: 'product_bug',
+    confidence: 'medium',
+    failedTests: [
+      { name: 'test_redeem_points_valid', failureType: 'assertion', evidence: 'AssertionError: order_total expected 90 got 100' },
+      { name: 'test_auth_cross_member', failureType: 'timeout', evidence: 'TimeoutError after 30s calling points-service' },
+    ],
+    rootCauseHypotheses: [
+      { hypothesis: 'Discount math regression: order_total is not reduced by points_redeemed.', likelihood: 'high', supportingEvidence: 'expected 90 got 100 (a 10-point discount not applied)' },
+      { hypothesis: 'points-service was slow/unavailable for the auth test — environmental, not a product bug.', likelihood: 'medium', supportingEvidence: 'TimeoutError after 30s calling points-service' },
+    ],
+    recommendedActions: [
+      'Treat the order_total assertion as a product bug and file it; do not re-run to make it pass.',
+      'Re-run test_auth_cross_member in isolation to confirm the timeout is environmental before quarantining.',
+    ],
+    rerunSuggested: true,
+    ownerHint: 'checkout/payments team',
+  }),
+});
+
+/* 13. Flaky Test Triage & Quarantine Advisor ------------------------ */
+
+const FlakyTestTriage = z.object({
+  summary: z.string(),
+  flakinessScore: z.number().min(0).max(100),
+  signals: z.array(
+    z.object({
+      test: z.string(),
+      pattern: z.enum(['intermittent_fail', 'order_dependent', 'timing_race', 'resource_contention', 'external_dependency', 'nondeterministic_data', 'unknown']),
+      evidence: z.string(),
+      recommendation: z.enum(['quarantine', 'fix', 'monitor', 'keep']),
+    }),
+  ),
+  /** DRAFT recommendation only — applied later by a human via a gated WriteGate; Arbiter never quarantines. */
+  quarantineCandidates: z.array(z.string()),
+  rootCauseNotes: z.string(),
+  decisionOwnedBy: z.string(),
+});
+export type FlakyTestTriage = z.infer<typeof FlakyTestTriage>;
+
+const flakyTestAdvisor = define<FlakyTestTriage>({
+  id: 'flaky-test-advisor',
+  label: 'Flaky Test Triage & Quarantine Advisor',
+  description: 'Diagnose flaky tests from run history, classify the flakiness pattern, and draft quarantine candidates (human-applied, never auto-written).',
+  artifactType: 'flaky_test_triage',
+  promptVersion: 'flaky-test-advisor@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Flaky tests to triage (attach run history as context)',
+  schema: FlakyTestTriage,
+  system: systemFor('flaky-test-advisor'),
+  ui: {
+    requirementLabel: 'Flaky tests (+ run history in context)',
+    requirementPlaceholder: 'Paste per-test pass/fail history across recent runs…',
+    sampleRequirement: 'Triage the flaky tests in the checkout suite and advise on quarantine.',
+    sampleContext: {
+      title: 'Test history (last 20 runs)',
+      content:
+        'test_redeem_points_valid: pass/pass/fail/pass/fail (intermittent). ' +
+        'test_points_balance_race: fails only when run in parallel. test_checkout_smoke: stable.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.signals.map((s) => ({ kind: 'entity' as const, value: s.test })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Two unstable tests: test_redeem_points_valid is intermittently failing (quarantine + investigate), test_points_balance_race is an order/parallelism race (fix, do not quarantine).`,
+    flakinessScore: 45,
+    signals: [
+      { test: 'test_redeem_points_valid', pattern: 'intermittent_fail', evidence: 'pass/pass/fail/pass/fail across recent runs', recommendation: 'quarantine' },
+      { test: 'test_points_balance_race', pattern: 'timing_race', evidence: 'fails only when run in parallel', recommendation: 'fix' },
+    ],
+    quarantineCandidates: ['test_redeem_points_valid'],
+    rootCauseNotes: 'The race test shares points_balance state across parallel workers; the intermittent test likely depends on unstubbed timing in the points-service call.',
+    decisionOwnedBy: 'QA lead (human) — quarantine is applied via a gated WriteGate, never by Arbiter',
+  }),
+});
+
+/* 14. Incident Postmortem & Log/Trace Triage Drafter ---------------- */
+
+const IncidentPostmortem = z.object({
+  title: z.string(),
+  summary: z.string(),
+  severity: z.enum(['sev1', 'sev2', 'sev3', 'sev4']),
+  timeline: z.array(z.object({ at: z.string(), event: z.string() })),
+  impact: z.string(),
+  rootCause: z.string(),
+  contributingFactors: z.array(z.string()),
+  detection: z.string(),
+  resolution: z.string(),
+  facts: z.array(z.string()),
+  hypotheses: z.array(z.string()),
+  actionItems: z.array(
+    z.object({
+      action: z.string(),
+      type: z.enum(['prevent', 'detect', 'mitigate', 'process']),
+      owner: z.string(),
+      priority: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+  /** Incident-to-regression back-propagation: tests to add so this cannot recur silently. */
+  regressionTests: z.array(z.string()),
+});
+export type IncidentPostmortem = z.infer<typeof IncidentPostmortem>;
+
+const incidentPostmortem = define<IncidentPostmortem>({
+  id: 'incident-postmortem',
+  label: 'Incident Postmortem Drafter',
+  description: 'Draft a blameless postmortem (timeline, root cause, typed action items) from incident notes/logs and back-propagate regression tests.',
+  artifactType: 'incident_postmortem',
+  promptVersion: 'incident-postmortem@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Incident notes / logs / trace excerpts',
+  schema: IncidentPostmortem,
+  system: systemFor('incident-postmortem'),
+  ui: {
+    requirementLabel: 'Incident notes / logs',
+    requirementPlaceholder: 'Paste incident notes, timeline fragments, error logs, or trace excerpts…',
+    sampleRequirement:
+      'Checkout redemptions failed for ~22 minutes after a deploy: points_redeemed was deducted but order_total did not update; ~1,400 orders affected. Rolled back the deploy tag; recovered.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    title: `${OFFLINE_NOTE} Partial-write in points redemption after deploy`,
+    summary: 'A deploy introduced a partial-write path where points_redeemed was deducted without updating order_total, affecting ~1,400 checkout orders for ~22 minutes until rollback.',
+    severity: 'sev2',
+    timeline: [
+      { at: 'T+0', event: 'Deploy of the redemption change reaches production.' },
+      { at: 'T+3m', event: 'Error rate on POST /v2/checkout/redeem rises; order_total mismatches appear.' },
+      { at: 'T+18m', event: 'On-call correlates the mismatch to the deploy.' },
+      { at: 'T+22m', event: 'Rollback to the previous deploy tag; redemptions recover.' },
+    ],
+    impact: '~1,400 orders had points deducted without a corresponding discount for ~22 minutes.',
+    rootCause: 'The redemption path committed the points deduction and the order update in separate steps without a transaction, so a failure between them left a partial write.',
+    contributingFactors: ['No transactional integrity test for the deduct-then-update sequence.', 'Alerting fired on error rate but not on the order_total mismatch directly.'],
+    detection: 'Elevated error rate on the redemption endpoint; manual correlation to the deploy.',
+    resolution: 'Rolled back the deploy tag; queued a fix to make deduction + order update atomic.',
+    facts: ['points_redeemed was deducted without order_total updating.', 'Rollback recovered the endpoint.'],
+    hypotheses: ['A mid-sequence failure (not a total outage) caused the partial write.'],
+    actionItems: [
+      { action: 'Make points deduction and order update atomic (single transaction).', type: 'prevent', owner: 'checkout team', priority: 'high' },
+      { action: 'Add an alert on order_total vs points_redeemed mismatch.', type: 'detect', owner: 'SRE', priority: 'medium' },
+      { action: 'Add a partial-failure regression test to the redemption suite.', type: 'prevent', owner: 'QA', priority: 'high' },
+    ],
+    regressionTests: [
+      'A retry after a failed order does not double-deduct points_redeemed and reconciles points_balance.',
+      'On a mid-sequence failure, no partial write persists (points_redeemed and order_total move together or not at all).',
+    ],
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -1084,6 +1283,9 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   testPlan,
   traceabilityMatrix,
   complianceMapping,
+  ciFailureTriage,
+  flakyTestAdvisor,
+  incidentPostmortem,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

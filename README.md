@@ -20,7 +20,7 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Eleven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Fourteen QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
@@ -33,6 +33,9 @@ Eleven QA/QE workflows, all running through the pipeline above, each with paste-
 9. **Test Plan Generator** *(Wave 2)* — an executable plan whose **every scenario traces to a grounded strategy risk-area / requirement id**.
 10. **Requirements Traceability & Coverage Matrix** *(Wave 2)* — **id-aware** links from requirement ids to covering test ids, surfacing uncovered requirements and orphan tests; invented ids block export.
 11. **Compliance Control-Mapping & Evidence Pack** *(Wave 2)* — maps framework controls (HIPAA/SOC 2) to a feature (satisfied vs. gap, required evidence, verification), control ids grounded, **human-attested**.
+12. **CI Failure Triage** *(Wave 3)* — classifies a CI failure (product bug / flaky / infra / dependency / config) with ranked root-cause hypotheses **grounded in the log**; never re-runs or changes CI.
+13. **Flaky Test Triage & Quarantine Advisor** *(Wave 3)* — diagnoses flakiness patterns from run history and **drafts** quarantine candidates (a human applies them via a gated WriteGate — Arbiter never quarantines).
+14. **Incident Postmortem Drafter** *(Wave 3)* — a blameless postmortem (timeline, root cause, typed action items) that **back-propagates regression tests** so the incident can't silently recur.
 
 Plus the platform features around them:
 
@@ -103,7 +106,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 11 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 14 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -118,9 +121,9 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Waves 0–2):** the governed workbench — guardrail spine, **eleven workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
+**Shipped (Waves 0–3):** the governed workbench — guardrail spine, **fourteen workflows**, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, Operational-Readiness Gate, and grounded Release-Readiness inputs; **Wave 1.5** exposed the multi-project surface; **Wave 2** added the Test Strategy & Test Plan Generators, the id-aware Requirements Traceability & Coverage Matrix, the Compliance Control-Mapping & Evidence Pack, and the **Quality Metrics Aggregation Layer** (`/insights`).
 
-The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 3** (CI failure triage, flaky-test quarantine advisor, log/trace triage + incident postmortem, read-only observability connectors).
+The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 4** (API test generation + contract-drift, PII-safe synthetic test data, security abuse-case challenger, accessibility & performance authoring).
 
 **Read-only Jira — enforced in code:** Arbiter never writes to the connected Jira workspace; every Jira request refuses any method but GET/HEAD before it is sent.
 

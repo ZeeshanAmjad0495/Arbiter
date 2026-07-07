@@ -59,9 +59,12 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 
 *All four workflow designs went through an adversarial multi-agent design pass; the two the pass could not finish were authored in-house and adversarially self-reviewed (which caught + fixed the test-strategy prose-scraping over-block).*
 
-## Wave 3 — CI reliability & operational learning
+## Wave 3 — CI reliability & operational learning *(shipped ✓)*
 
-CI Failure Triage / Root-Cause Drafter · Flaky Test Triage & Quarantine Advisor (quarantine only via WriteGate) · Log/Trace Triage + Incident Postmortem Drafter · read-only observability connectors *(substrate)* · Incident-to-Regression back-propagation.
+- **CI Failure Triage** — classifies a failure (product bug / flaky / infra / dependency / config / test bug / environment) with ranked root-cause hypotheses; failed-test names + evidence grounded in the log; never re-runs or changes CI.
+- **Flaky Test Triage & Quarantine Advisor** — flakiness patterns from run history; **drafts** quarantine candidates only — a human applies them via a gated WriteGate (Arbiter never quarantines/writes).
+- **Incident Postmortem Drafter** (Log/Trace Triage) — blameless timeline, root cause, typed action items (prevent/detect/mitigate/process), facts-vs-hypotheses; includes **incident-to-regression back-propagation** (the regression tests that would catch a recurrence).
+- *Deferred substrate:* live read-only observability connectors (Datadog/Grafana/Sentry/Splunk) — same read-only pattern as the Jira connector; workflows accept pasted logs/history today.
 
 ## Wave 4 — API / data / non-functional authoring breadth
 
