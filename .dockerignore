@@ -1,0 +1,20 @@
+# Keep the Docker build context small and the image clean.
+# Without this, `COPY . .` drags node_modules (GBs), git history, build output,
+# and — critically — any local .env (secrets) into the build layer.
+**/node_modules
+.git
+.github
+**/dist
+**/build
+**/.svelte-kit
+**/*.tsbuildinfo
+.pnpm-store
+coverage
+**/.env
+**/.env.*
+*.log
+.DS_Store
+/data-local
+scratchpad
+docs
+**/*.md

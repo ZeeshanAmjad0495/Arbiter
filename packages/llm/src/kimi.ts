@@ -120,7 +120,12 @@ export class KimiLlmProvider implements LlmProvider {
     }
 
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      // Distinguish a genuine empty body from a failed body read (the latter was
+      // previously swallowed to '' with no signal) so error triage isn't misled.
+      const text = await res.text().catch((err) => {
+        console.error(`kimi_error_body_read_failed status=${res.status}: ${err instanceof Error ? err.message : String(err)}`);
+        return '<body read failed>';
+      });
       // Some deployments reject response_format alongside thinking — retry without it.
       if (res.status === 400 && text.includes('response_format')) {
         const retry: Record<string, unknown> = { ...body };

@@ -104,13 +104,13 @@ Everything consciously deferred during Waves 0–1, with why it's safe today and
 | ~~**Real OTLP → Langfuse exporter**~~ ✅ shipped | `OtlpHttpExporter` + pure `toOtlpTraces` converter; the API flushes per-request spans to `OTEL_EXPORTER_OTLP_ENDPOINT` (→ Collector → Langfuse), best-effort, never blocks a request (`tests/otlp.test.ts`) | point it at a live collector |
 | **Server-side Presidio custom recognizers** | app-side custom recognizers cover member IDs/secrets/internal URLs in both engines | when centralizing PHI-coverage tuning |
 | ~~**Locale-aware sanitizer recognizers**~~ ✅ shipped | IBAN, E.164 international phone, UK NINO — anchored + validated, live in both engine paths (`tests/locale-sanitize.test.ts`) | — (extend with more locales on demand) |
-| **Kimi read-failure distinct logging** | body-read failure swallowed to `''` | minor observability polish |
-| **Container image size optimization** | builds & runs; CI-verified, not size-tuned | pre-deploy |
+| ~~**Kimi read-failure distinct logging**~~ ✅ shipped | a failed error-body read now logs `kimi_error_body_read_failed` and surfaces `<body read failed>` instead of silently becoming `''` | — |
+| ~~**Container image size optimization**~~ ✅ shipped | added `.dockerignore` (keeps `node_modules`/`.git`/**`.env`** out of the build context + image); already multi-stage with `pnpm deploy --prod` on `node:22-slim`, non-root | fine-tune base at deploy time if needed |
 | **pgvector migration** for dense retrieval | Postgres FTS + app-side cosine over `real[]` behind the retrieval interface | at scale (drop-in behind the interface) |
 | **Streaming on the LLM path** | non-streaming (spinner); Kimi thinking is slow | UX polish (biggest win while thinking is on) |
 | ~~**LiteLLM gateway + 2nd LLM provider**~~ ✅ shipped | `OpenAICompatProvider` (LiteLLM / any OpenAI-compatible endpoint); precedence Kimi > Anthropic > LiteLLM > stub; `createJudgeProvider` picks an independent provider for the judge | point at a running LiteLLM gateway |
 | **Expand eval suite → 20–30 cases/workflow** | ~20 code-based checks across 6 cases (CI gate seed) | ongoing, per workflow |
-| **Frontend a11y + design pass** (`ecc:a11y-architect` + Lighthouse) | functional, not a11y-audited | a UI-polish milestone |
+| **Frontend a11y — hardening pass ✅; Lighthouse audit deferred** | skip-to-content link, `role="alert"` on async errors, `aria-live` result region, `aria-busy` run state; `svelte-check` a11y clean (0 warnings) | a full Lighthouse/axe run needs a browser — do it in a UI-polish milestone |
 | **LLM Eval Workbench** — judge core ✅ shipped; Ragas/garak/PyRIT deferred | `judgeArtifact` (rubric-scored LLM-as-judge, provider-pluggable, deterministic offline stub) + independent judge provider (`tests/judge.test.ts`). Ragas/garak/PyRIT are external Python tools | wire the Python eval tools + statistical gating as a billable client-facing track |
 | **Gated Defect Write-Back → Jira** (Wave 1 #3) | deferred by the read-only-Jira constraint | **only** against a sandbox Jira / GitHub / TestRail, with explicit per-target authorization — never the connected workspace |
 

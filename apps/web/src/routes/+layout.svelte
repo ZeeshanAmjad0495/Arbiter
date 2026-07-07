@@ -75,6 +75,8 @@
   const liveModes = new Set(['postgres', 'presidio', 'anthropic', 'kimi', 'otlp', 'encrypted']);
 </script>
 
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark">⚖️</span>
@@ -117,9 +119,28 @@
   </div>
 </header>
 
-{@render children()}
+<div id="main-content" tabindex="-1">
+  {@render children()}
+</div>
 
 <style>
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    background: var(--accent-strong, #2563eb);
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 0 0 8px 0;
+    font-weight: 600;
+  }
+  .skip-link:focus {
+    left: 0;
+  }
+  #main-content:focus {
+    outline: none;
+  }
   .mainnav {
     display: flex;
     gap: 4px;

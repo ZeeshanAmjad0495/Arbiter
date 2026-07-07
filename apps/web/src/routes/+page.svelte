@@ -188,18 +188,18 @@
         {/if}
       </div>
 
-      <button class="primary" type="button" onclick={run} disabled={loading}>
-        {#if loading}<span class="spinner"></span> Running pipeline…{:else}Run {selected.label}{/if}
+      <button class="primary" type="button" onclick={run} disabled={loading} aria-busy={loading}>
+        {#if loading}<span class="spinner" aria-hidden="true"></span> Running pipeline…{:else}Run {selected.label}{/if}
       </button>
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else}
       <p class="hint">Loading workflows…</p>
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error" role="alert">{error}</p>{/if}
     {/if}
   </section>
 
   <!-- Output -->
-  <section>
+  <section aria-live="polite">
     {#if outcome}
       <div class="panel" style="margin-bottom:14px;padding:14px 18px">
         <Pipeline {outcome} />
