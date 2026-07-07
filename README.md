@@ -131,6 +131,8 @@ Every external dependency sits behind an interface with a **real impl and an off
 - **Multi-tenant isolation** — mandatory `project_id` filters + Postgres `FORCE ROW LEVEL SECURITY` (fail-closed) backstop. The active project is selected per request (`x-arbiter-project` header / UI switcher) and threaded into every repo call, which sets the RLS GUC per transaction — a caller cannot read or write across the project boundary (HTTP-level isolation test in `tests/projects.test.ts`).
 - **Append-only audit trail** — who prompted, which sources, which prompt/model version, who approved which change — exportable as compliance evidence.
 - **Encrypted de-masking store** (AES-256-GCM) with retention control, for re-hydrating approved outputs.
+- **WriteGate** — the only path Arbiter ever writes: `plan → named human approval → apply → verify → append-only audit`. Read-only by default; refuses to apply without a named approver and **hard-refuses the connected Jira workspace**. Ships with a sandbox target; real targets plug into the `WriteTarget` interface.
+- **Output PII re-scan gate** — opt-in workflows (e.g. synthetic test data) have their *generated* artifact re-scanned; a leaked real PII value blocks export.
 
 ## Status
 

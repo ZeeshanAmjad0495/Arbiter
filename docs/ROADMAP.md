@@ -25,7 +25,7 @@ Not user-facing workflows; they feed the **ground** stage or compute over captur
 - **Per-project knowledge + hybrid retrieval (RAG):** knowledge store, per-source chunkers, Postgres FTS + app-side dense re-rank (pgvector-swappable), Context Pack Builder wired to retrieval → *project-aware generation, no re-pasting*. **Unblocks** Wave 2 (traceability corpus) and Wave 5 (cross-req, spec-change).
 - **Read-only ground-source connectors:** Jira sync (read-only) ✓ · Confluence · observability (Datadog/Grafana/Sentry/Splunk) — ACL-mirrored, PII-sanitized. **Unblocks** Wave 3.
 - **Quality Metrics Aggregation Layer:** deterministic aggregation over spans/edit-diffs/dwell/eval results → the real "quality trend line." **Unblocks** reporting/forecasting.
-- **WriteGate:** diff-plan → named approval → apply → verify → audit. Read-only default. **Targets: GitHub / TestRail / Xray / a sandbox Jira ONLY — never the connected production Jira workspace.**
+- **WriteGate** *(primitive shipped ✓):* `plan → named approval → apply → verify → append-only audit`. Read-only default; the only path Arbiter ever writes. Refuses to apply without a named human approval, and **HARD-refuses the connected Jira workspace at both register and apply time** (non-negotiable). Ships with an in-memory `SandboxWriteTarget`; real targets (GitHub / TestRail / Xray / sandbox Jira) implement the `WriteTarget` interface next. Proven in `tests/writegate.test.ts`.
 - **Source-vs-Output Validator:** field-level source↔output check (the documented 1.5h→2min win) — ships with the knowledge/data substrate.
 
 ---
