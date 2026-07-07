@@ -11,7 +11,7 @@
 The spine and MVP are built, hardened, and on `main`:
 
 - Guardrail pipeline `sanitize → ground → generate → validate → gate` (offline-first, pluggable to Postgres/RLS, Presidio, Anthropic/Kimi).
-- **5 workflows:** Requirement & Ambiguity Analyzer, Test Case Generator (+Gherkin), Edge-Case Challenger, Bug Report Drafter, Release Readiness Summarizer.
+- **7 workflows:** Requirement & Ambiguity Analyzer, Test Case Generator (+Gherkin), Edge-Case Challenger, Bug Report Drafter, Release Readiness Summarizer, NFR Completeness Analyzer, Operational-Readiness Gate.
 - Review Queue (edit-diff + dwell capture), Export (MD/CSV/JSON/Gherkin), 6-component Prompt Library, code-based eval gate in CI.
 - Read-only grounding sources: OpenAPI upload + **Jira fetch-by-key (read-only, org-scoped)**.
 - Security/PHI/DB hardening (adversarially reviewed): credential hard-block, union-redaction, atomic audited writes, auth guard, context-pack sanitization.
@@ -30,13 +30,13 @@ Not user-facing workflows; they feed the **ground** stage or compute over captur
 
 ---
 
-## Wave 1 — Quick wins that extend shipped surface *(next)*
+## Wave 1 — Quick wins that extend shipped surface *(shipped ✓)*
 
-| # | Item | Effort | Notes |
+| # | Item | Effort | Status |
 |---|---|---|---|
-| 1 | **Operational-Readiness gate** (Release Readiness v2) | S | SLOs/runbook/alerts/rollback/on-call in the Go/No-Go; human-owned |
-| 2 | **NFR Completeness Analyzer** (extend Requirement Analyzer) | S | flags missing perf/security/a11y/i18n/resilience ACs — catches the non-functional domain at the cheapest point |
-| 3 | **Grounded Release-Readiness inputs** | M | ground the Go/No-Go in real defect counts / test-run / eval results |
+| 1 | **Operational-Readiness Gate** (Release Readiness v2) | S | ✅ shipped — 14-category grounded checklist (SLOs/runbook/alerts/rollback/on-call/DR/kill-switch/dependencies), human-owned Go/No-Go |
+| 2 | **NFR Completeness Analyzer** (extend Requirement Analyzer) | S | ✅ shipped — 15 NFR categories incl. data-integrity/compatibility/recoverability/auditability; drafts a testable AC per gap |
+| 3 | **Grounded Release-Readiness inputs** | M | ✅ shipped — structured release signals rendered into the grounded context pack; cited pass ratios/percentages are grounding-validated (invented figures block export) |
 | — | ~~Gated Defect Write-Back → Jira~~ | — | **Deferred** — conflicts with "never write to the connected Jira." Will target a sandbox Jira only, with explicit per-target authorization. |
 
 ## Wave 2 — Core QE differentiators (the QA→QE leap)

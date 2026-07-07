@@ -20,13 +20,15 @@ That pipeline is the whole point. It is what makes Arbiter safer *and* more usef
 
 ## What it does (the workflows)
 
-Five QA workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
+Seven QA/QE workflows, all running through the pipeline above, each with paste-in / upload / Jira-fetch context:
 
 1. **Requirement & Ambiguity Analyzer** *(shift-left)* — finds ambiguities, missing acceptance criteria, and testability risks *before code exists*; produces ready-to-send BA/dev questions.
 2. **Test Case Generator** — a grounded, structured house-schema test case **with one-click Gherkin**.
 3. **Edge-Case Challenger** — adversarial edge cases across a 12-heuristic taxonomy (+ schema-drift, hostile input), with a low-value bucket so volume ≠ coverage.
 4. **Bug Report Drafter** — a Jira-ready draft with **facts/hypotheses separated** and explicit severity reasoning.
-5. **Release Readiness Summarizer** — a decision-ready summary with a risk table and an explicitly **human-owned** Go / Go-with-risk / No-Go.
+5. **Release Readiness Summarizer** — a decision-ready summary with a risk table and an explicitly **human-owned** Go / Go-with-risk / No-Go, **grounded in structured release signals** (test-run counts, open-defect counts, eval pass rate) so cited figures can't be invented.
+6. **NFR Completeness Analyzer** *(Wave 1)* — audits a requirement across 15 non-functional categories (performance, security, a11y, i18n, reliability, **data integrity**, …) and drafts a testable acceptance criterion for each gap.
+7. **Operational-Readiness Gate** *(Wave 1)* — a grounded production-readiness checklist beyond test results (SLOs, runbook, alerts, rollback, on-call, DR, kill-switch, dependencies) with a **human-owned** Go / No-Go.
 
 Plus the platform features around them:
 
@@ -96,7 +98,7 @@ Every external dependency sits behind an interface with a **real impl and an off
 | `@arbiter/sanitize` | Presidio client + regex recognizers + credential hard-block + encrypted de-masking store |
 | `@arbiter/llm` | Anthropic + Kimi + deterministic stub providers |
 | `@arbiter/guardrail` | The pipeline: grounding validator, review gate, orchestrator (spans + audit) |
-| `@arbiter/workflows` | The 5 workflows, the workflow registry, the 6-component prompt templates |
+| `@arbiter/workflows` | The 7 workflows, the workflow registry, the 6-component prompt templates |
 | `@arbiter/api` | Fastify service (workflows, review queue, prompts, Jira) |
 | `@arbiter/web` | SvelteKit UI |
 
@@ -111,9 +113,9 @@ Every external dependency sits behind an interface with a **real impl and an off
 
 ## Status
 
-**Shipped (Wave 0):** the governed workbench — guardrail spine, five workflows, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass.
+**Shipped (Wave 0 + Wave 1):** the governed workbench — guardrail spine, seven workflows, review queue (+ edit-diff/dwell capture), 6-component prompt library, eval gate in CI, read-only OpenAPI + Jira grounding, and an adversarially-reviewed security/PHI/DB hardening pass. **Wave 1** added the NFR Completeness Analyzer, the Operational-Readiness Gate, and grounded Release-Readiness inputs.
 
-The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 1** (Operational-Readiness gate, NFR Completeness Analyzer, grounded Release-Readiness inputs).
+The roadmap has been **re-planned around the QA→QE gap analysis** into value-ordered **Waves** — see **[`docs/ROADMAP.md`](docs/ROADMAP.md)** and **[`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md)**. Next: **Wave 2** (Test Strategy & Plan Generators, Requirements Traceability & Coverage Matrix, Compliance Control-Mapping, the Quality Metrics Aggregation Layer).
 
 **Read-only Jira — enforced in code:** Arbiter never writes to the connected Jira workspace; every Jira request refuses any method but GET/HEAD before it is sent.
 

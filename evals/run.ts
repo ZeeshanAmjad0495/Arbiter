@@ -10,7 +10,7 @@
 import { loadConfig } from '@arbiter/config';
 import { type GuardrailOutcome, Project, User, newProjectId, newUserId, nowIso } from '@arbiter/core';
 import { createGuardrailEngine } from '@arbiter/guardrail';
-import { type ContextInput, getWorkflow, runWorkflow } from '@arbiter/workflows';
+import { type ContextInput, getWorkflow, renderReleaseSignals, runWorkflow } from '@arbiter/workflows';
 
 type Outcome = GuardrailOutcome<unknown>;
 type Grader = { name: string; check: (o: Outcome) => string | null };
@@ -111,11 +111,50 @@ const CASES: EvalCase[] = [
     graders: [notNull, nonEmptyArray('stepsToReproduce'), hasString('severityReasoning'), nonEmptyArray('facts')],
   },
   {
-    name: 'release-readiness: risk table + recommendation',
+    name: 'release-readiness: risk table + recommendation, grounded in real signals',
     workflow: 'release-readiness',
-    requirement: '212/215 regression passed; 1 real minor bug; no blockers.',
-    context: [],
-    graders: [notNull, nonEmptyArray('risks'), hasString('recommendation'), hasString('summary')],
+    requirement: 'Summarize release readiness from the attached run signals; 1 real minor bug; no blockers.',
+    // Wave-1 #3: the Go/No-Go is grounded in structured signals, so the summary's
+    // cited pass ratio (212/215) is checked against real numbers, not invented.
+    context: [renderReleaseSignals({ testsPassed: 212, testsTotal: 215, openDefects: { minor: 1 }, evalPassRatePct: 100 })],
+    graders: [notNull, grounded, nonEmptyArray('risks'), hasString('recommendation'), hasString('summary')],
+  },
+  {
+    name: 'nfr-analyzer: flags missing non-functional requirements + drafts ACs',
+    workflow: 'nfr-analyzer',
+    requirement: 'As a member, I can redeem loyalty points at checkout for a discount; points are deducted and the total updates.',
+    context: [
+      {
+        title: 'Checkout API schema (v2)',
+        content: 'Checkout API (v2). Fields: member_id, points_balance, points_redeemed, order_total, discount_applied.',
+      },
+    ],
+    graders: [
+      notNull,
+      nonEmptyArray('nfrChecklist'),
+      nonEmptyArray('openCategories'),
+      scoreInRange('coverageScore'),
+      hasString('summary'),
+    ],
+  },
+  {
+    name: 'operational-readiness-gate: checklist + open actions + human-owned decision',
+    workflow: 'operational-readiness-gate',
+    requirement: 'Ship the points-redemption batch endpoint to production across 3 regions; backfills 4.2M member rows.',
+    context: [
+      {
+        title: 'Release context',
+        content: 'Rollback: revert the deploy tag; not yet tested. On-call: pager rotation staffed. Alerting: p95 latency alert exists.',
+      },
+    ],
+    graders: [
+      notNull,
+      scoreInRange('readinessScore'),
+      nonEmptyArray('checklist'),
+      nonEmptyArray('openActions'),
+      hasString('recommendation'),
+      hasString('decisionOwnedBy'),
+    ],
   },
 ];
 

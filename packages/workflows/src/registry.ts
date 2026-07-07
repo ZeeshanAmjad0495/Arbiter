@@ -365,6 +365,39 @@ const ReleaseReadiness = z.object({
 });
 export type ReleaseReadiness = z.infer<typeof ReleaseReadiness>;
 
+/**
+ * Wave-1 #3 — Grounded Release-Readiness inputs. Structured release signals
+ * (real test-run counts, open-defect counts by severity, eval pass rate) are
+ * rendered into a deterministic, citable context item so the Go/No-Go is grounded
+ * in real numbers instead of prose the model might distort. The rendered ratios
+ * (e.g. `212/215`) become the haystack the grounding validator checks the
+ * summary's cited figures against.
+ */
+export interface ReleaseSignals {
+  testsPassed: number;
+  testsTotal: number;
+  openDefects: Partial<Record<'blocker' | 'critical' | 'major' | 'minor' | 'trivial', number>>;
+  evalPassRatePct?: number;
+  coverageNotes?: string;
+}
+
+export function renderReleaseSignals(signals: ReleaseSignals): ContextInput {
+  const failed = Math.max(0, signals.testsTotal - signals.testsPassed);
+  const defects = (['blocker', 'critical', 'major', 'minor', 'trivial'] as const)
+    .map((sev) => `${sev}: ${signals.openDefects[sev] ?? 0}`)
+    .join(', ');
+  const lines = [
+    `Regression suite: ${signals.testsPassed}/${signals.testsTotal} tests passed (${failed} failed).`,
+    `Open defects — ${defects}.`,
+    signals.evalPassRatePct !== undefined ? `Eval pass rate: ${signals.evalPassRatePct}%.` : '',
+    signals.coverageNotes ? `Coverage: ${signals.coverageNotes}` : '',
+  ].filter(Boolean);
+  return { title: 'Release signals', content: lines.join('\n'), sourceType: 'other' };
+}
+
+/** Cited figures a release summary must ground against — pass ratios and percentages. */
+const RELEASE_FIGURE_RE = /\b\d{1,7}\/\d{1,7}\b|\b\d{1,3}(?:\.\d+)?%/g;
+
 const releaseReadiness = define<ReleaseReadiness>({
   id: 'release-readiness',
   label: 'Release Readiness Summarizer',
@@ -375,6 +408,15 @@ const releaseReadiness = define<ReleaseReadiness>({
   inputNoun: 'Test notes / run results',
   schema: ReleaseReadiness,
   system: systemFor('release-readiness'),
+  // Grounds any pass ratio / percentage the summary cites against the provided
+  // release signals — an invented "215/215" or "100%" becomes unexportable.
+  extractClaims: (output) => {
+    const cited = new Set<string>();
+    for (const text of [output.summary, output.testCoverageNotes, ...output.openIssues]) {
+      for (const m of text.matchAll(RELEASE_FIGURE_RE)) cited.add(m[0]);
+    }
+    return [...cited].map((value) => ({ kind: 'entity' as const, value }));
+  },
   ui: {
     requirementLabel: 'Test notes / run results',
     requirementPlaceholder: 'Paste test run summary, open bugs, coverage notes…',
@@ -405,6 +447,306 @@ const releaseReadiness = define<ReleaseReadiness>({
 });
 
 /* ------------------------------------------------------------------ *
+ * 6. NFR Completeness Analyzer (Wave 1 — extends Requirement Analyzer) *
+ * ------------------------------------------------------------------ */
+
+// Built-in NFR checklist — the grounding authority for category names. Extended
+// past the original 10 (per adversarial review) to cover data integrity,
+// compatibility, portability, recoverability, and auditability, so money-adjacent
+// and cross-platform gaps are surfaceable rather than silently out-of-scope.
+const NFR_CATEGORIES = [
+  'performance',
+  'security',
+  'accessibility',
+  'localization',
+  'reliability',
+  'observability',
+  'privacy_compliance',
+  'usability',
+  'scalability',
+  'maintainability',
+  'data_integrity',
+  'compatibility',
+  'portability',
+  'recoverability',
+  'auditability',
+] as const;
+
+const NfrCompletenessAnalysis = z.object({
+  coverageScore: z.number().min(0).max(100),
+  coveredCategories: z.array(z.enum(NFR_CATEGORIES)),
+  openCategories: z.array(z.enum(NFR_CATEGORIES)),
+  nfrChecklist: z.array(
+    z.object({
+      category: z.enum(NFR_CATEGORIES),
+      status: z.enum(['covered', 'partial', 'missing']),
+      severity: z.enum(['none', 'low', 'medium', 'high', 'critical']),
+      missing: z.string(),
+      acceptanceCriterion: z.string(),
+      rationale: z.string(),
+    }),
+  ),
+  summary: z.string(),
+});
+export type NfrCompletenessAnalysis = z.infer<typeof NfrCompletenessAnalysis>;
+
+const nfrAnalyzer = define<NfrCompletenessAnalysis>({
+  id: 'nfr-analyzer',
+  label: 'NFR Completeness Analyzer',
+  description:
+    'Flag non-functional requirements that were never written down (performance, security, a11y, i18n, reliability, data integrity, and more) and draft a testable acceptance criterion for each gap.',
+  artifactType: 'nfr_completeness_analysis',
+  promptVersion: 'nfr-analyzer@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Requirement / feature to audit for NFR coverage',
+  schema: NfrCompletenessAnalysis,
+  system: systemFor('nfr-analyzer'),
+  ui: {
+    requirementLabel: 'Requirement / feature',
+    requirementPlaceholder: 'Paste a requirement or feature description to audit for missing non-functional requirements…',
+    sampleRequirement:
+      'As a member, I can redeem loyalty points at checkout for a discount. Points are deducted and the order total updates.',
+    sampleContext: {
+      title: 'Checkout API schema (v2)',
+      content: 'Checkout API (v2). Fields: member_id, points_balance, points_redeemed, order_total, discount_applied. Endpoint: POST /v2/checkout/redeem.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    coverageScore: 30,
+    coveredCategories: ['usability'],
+    openCategories: [
+      'performance',
+      'security',
+      'accessibility',
+      'localization',
+      'reliability',
+      'observability',
+      'data_integrity',
+    ],
+    nfrChecklist: [
+      {
+        category: 'data_integrity',
+        status: 'missing',
+        severity: 'critical',
+        missing: 'No rule preventing double-redemption or partial writes when points are deducted but the order fails.',
+        acceptanceCriterion:
+          'Given a member with points_balance N, when a redemption is retried after a failed order, then points_redeemed is applied at most once and points_balance reconciles to N.',
+        rationale: 'Money-adjacent flow: a partial write can silently create or destroy value.',
+      },
+      {
+        category: 'performance',
+        status: 'missing',
+        severity: 'high',
+        missing: 'No latency target for POST /v2/checkout/redeem.',
+        acceptanceCriterion: 'p95 latency of POST /v2/checkout/redeem is < 500ms under expected checkout load.',
+        rationale: 'Checkout is on the critical purchase path; slow redemption abandons carts.',
+      },
+      {
+        category: 'security',
+        status: 'partial',
+        severity: 'high',
+        missing: 'No authorization rule that a member can only redeem their own points_balance.',
+        acceptanceCriterion:
+          'Given member A, when redeeming against member B’s member_id, then the request is rejected with 403 and no points are deducted.',
+        rationale: 'Object-level authorization gap would let one member spend another’s points.',
+      },
+      {
+        category: 'accessibility',
+        status: 'missing',
+        severity: 'medium',
+        missing: 'No accessibility requirement for the discount confirmation state.',
+        acceptanceCriterion: 'The applied-discount confirmation is announced to screen readers and meets WCAG 2.2 AA contrast.',
+        rationale: 'Checkout must be operable by assistive-technology users.',
+      },
+      {
+        category: 'reliability',
+        status: 'missing',
+        severity: 'high',
+        missing: 'Undefined behavior when the points service is unavailable at checkout.',
+        acceptanceCriterion:
+          'Given the points service is down, when a member attempts redemption, then checkout proceeds without a discount and shows a retryable notice (no order is blocked or double-charged).',
+        rationale: 'A dependency outage must degrade gracefully, not break checkout.',
+      },
+      {
+        category: 'observability',
+        status: 'missing',
+        severity: 'medium',
+        missing: 'No requirement to emit metrics/logs for redemption success/failure.',
+        acceptanceCriterion: 'Each redemption emits a structured event with outcome and latency, alertable on an elevated failure rate.',
+        rationale: 'Without signals, redemption failures are invisible in production.',
+      },
+    ],
+    summary:
+      `${OFFLINE_NOTE} The redemption story specifies the happy path but omits most non-functional requirements — ` +
+      'most critically transactional data integrity (double-redeem / partial write), performance, dependency reliability, and object-level authorization.',
+  }),
+});
+
+/* ------------------------------------------------------------------ *
+ * 7. Operational-Readiness Gate (Wave 1 — Release Readiness v2)       *
+ * ------------------------------------------------------------------ */
+
+// The operational concerns a release needs beyond passing tests. Extended past
+// the original 12 (per adversarial review) with distinct log/trace observability
+// and downstream-dependency readiness.
+const OPS_CATEGORIES = [
+  'slo_sli',
+  'runbook',
+  'alerting',
+  'dashboards',
+  'observability_logging_tracing',
+  'rollback_plan',
+  'on_call',
+  'load_perf_test',
+  'dr_backup_restore',
+  'feature_flag_kill_switch',
+  'security_privacy_review',
+  'capacity_quota',
+  'data_migration',
+  'dependency_readiness',
+] as const;
+
+const OperationalReadiness = z.object({
+  summary: z.string(),
+  readinessScore: z.number().min(0).max(100),
+  /** Explicitly human-owned in the UI — the tool recommends, a release owner decides. */
+  recommendation: z.enum(['go', 'go_with_risk', 'no_go']),
+  checklist: z.array(
+    z.object({
+      category: z.enum(OPS_CATEGORIES),
+      status: z.enum(['ready', 'partial', 'missing', 'unknown']),
+      // isBlocker is derived from severity === 'blocker' (not a separate field, to avoid drift).
+      severity: z.enum(['blocker', 'high', 'medium', 'low']),
+      evidence: z.string(),
+      rationale: z.string(),
+    }),
+  ),
+  openActions: z.array(
+    z.object({
+      action: z.string(),
+      category: z.enum(OPS_CATEGORIES),
+      priority: z.enum(['low', 'medium', 'high']),
+      blocksRelease: z.boolean(),
+      suggestedOwner: z.string(),
+    }),
+  ),
+  decisionOwnedBy: z.string(),
+  signOffRequired: z.enum(['required', 'not_required']),
+});
+export type OperationalReadiness = z.infer<typeof OperationalReadiness>;
+
+const operationalReadinessGate = define<OperationalReadiness>({
+  id: 'operational-readiness-gate',
+  label: 'Operational-Readiness Gate',
+  description:
+    'Draft a grounded production-readiness checklist (SLOs, runbook, alerts, rollback, on-call, DR, kill-switch, …) with a human-owned Go / No-Go beyond test results.',
+  artifactType: 'operational_readiness',
+  promptVersion: 'operational-readiness-gate@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Release / change to assess for operational readiness',
+  schema: OperationalReadiness,
+  system: systemFor('operational-readiness-gate'),
+  ui: {
+    requirementLabel: 'Release / change',
+    requirementPlaceholder: 'Describe the release and paste operational context (SLOs, runbook, rollback, on-call)…',
+    sampleRequirement:
+      'Ship the new points-redemption batch endpoint to production across 3 regions via a rolling deploy. ' +
+      'Backfills 4.2M existing member rows.',
+    sampleContext: {
+      title: 'Release context',
+      content:
+        'Rollback: revert the deploy tag; not yet tested. On-call: pager rotation staffed. Alerting: p95 latency alert exists. ' +
+        'DR/backup: nightly snapshot. No load test run for the batch endpoint. Feature flag: redemption_batch_enabled.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary:
+      `${OFFLINE_NOTE} The 3-region batch rollout has core alerting, on-call, and a feature flag in place, but a release blocker ` +
+      'remains: no load test covers the batch endpoint against a 4.2M-row backfill, and rollback is untested. Both must close before go.',
+    readinessScore: 45,
+    recommendation: 'no_go',
+    checklist: [
+      {
+        category: 'alerting',
+        status: 'ready',
+        severity: 'low',
+        evidence: 'p95 latency alert exists',
+        rationale: 'Latency regressions on the endpoint will page.',
+      },
+      {
+        category: 'on_call',
+        status: 'ready',
+        severity: 'low',
+        evidence: 'pager rotation staffed',
+        rationale: 'A human is reachable during the rollout window.',
+      },
+      {
+        category: 'feature_flag_kill_switch',
+        status: 'ready',
+        severity: 'low',
+        evidence: 'Feature flag: redemption_batch_enabled',
+        rationale: 'The endpoint can be disabled without a redeploy.',
+      },
+      {
+        category: 'rollback_plan',
+        status: 'partial',
+        severity: 'high',
+        evidence: 'revert the deploy tag; not yet tested',
+        rationale: 'A rollback path exists but is unverified against the data backfill.',
+      },
+      {
+        category: 'load_perf_test',
+        status: 'missing',
+        severity: 'blocker',
+        evidence: 'No load test run for the batch endpoint',
+        rationale: 'A 4.2M-row backfill on shared infra is unproven under load — the top release risk.',
+      },
+      {
+        category: 'dr_backup_restore',
+        status: 'partial',
+        severity: 'medium',
+        evidence: 'nightly snapshot',
+        rationale: 'Backups exist but restore has not been rehearsed for this migration.',
+      },
+      {
+        category: 'dependency_readiness',
+        status: 'unknown',
+        severity: 'medium',
+        evidence: '',
+        rationale: 'Downstream DB load from the backfill on shared infra is not assessed in the provided context.',
+      },
+    ],
+    openActions: [
+      {
+        action: 'Run a load test of the batch endpoint against a 4.2M-row backfill in staging before deploy.',
+        category: 'load_perf_test',
+        priority: 'high',
+        blocksRelease: true,
+        suggestedOwner: 'perf/QA',
+      },
+      {
+        action: 'Rehearse the deploy-tag rollback with the data backfill applied and record the runbook steps.',
+        category: 'rollback_plan',
+        priority: 'high',
+        blocksRelease: true,
+        suggestedOwner: 'release owner',
+      },
+      {
+        action: 'Confirm downstream DB capacity headroom for the backfill on shared infra.',
+        category: 'dependency_readiness',
+        priority: 'medium',
+        blocksRelease: false,
+        suggestedOwner: 'SRE',
+      },
+    ],
+    decisionOwnedBy: 'Release owner / QA lead (human)',
+    signOffRequired: 'required',
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -414,6 +756,8 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   edgeCaseChallenger,
   bugReportDrafter,
   releaseReadiness,
+  nfrAnalyzer,
+  operationalReadinessGate,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

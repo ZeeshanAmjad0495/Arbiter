@@ -24,13 +24,13 @@
 
   function chipClass(key: string, value: unknown): string {
     const v = String(value).toLowerCase();
-    if (['high', 'critical', 'blocker', 'no_go', 'major'].includes(v)) return 'chip bad';
-    if (['medium', 'go_with_risk', 'minor'].includes(v)) return 'chip warn';
-    if (['low', 'go', 'trivial', 'true'].includes(v)) return 'chip good';
+    if (['high', 'critical', 'blocker', 'no_go', 'major', 'missing'].includes(v)) return 'chip bad';
+    if (['medium', 'go_with_risk', 'minor', 'partial'].includes(v)) return 'chip warn';
+    if (['low', 'go', 'trivial', 'true', 'ready', 'covered'].includes(v)) return 'chip good';
     return 'chip';
   }
 
-  const BADGE_KEYS = ['severity', 'priority', 'recommendation', 'decision', 'category'];
+  const BADGE_KEYS = ['severity', 'priority', 'recommendation', 'decision', 'category', 'status'];
 
   const entries = $derived(isObject(output) ? Object.entries(output) : []);
 </script>
