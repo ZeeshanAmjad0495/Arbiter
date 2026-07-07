@@ -24,18 +24,28 @@ export interface DemaskStore {
    * mapping, and returns the placeholder. The counter lives in the (long-lived)
    * store, so placeholders never collide across sanitize() calls — a later call's
    * `[EMAIL_ADDRESS_n]` can't overwrite an earlier one and leak the wrong PII.
+   *
+   * `projectId` tenant-scopes the mapping: a scoped entry can only be resolved by
+   * the same project (fail-closed), so rehydration can never leak another tenant's
+   * PII. Omit it for unscoped (single-tenant / test) use.
    */
-  put(type: SanitizationFindingType, original: string): Promise<string>;
-  resolve(placeholder: string): Promise<string | null>;
+  put(type: SanitizationFindingType, original: string, projectId?: string): Promise<string>;
+  /** Returns the original iff the entry is unscoped or its project matches `projectId`. */
+  resolve(placeholder: string, projectId?: string): Promise<string | null>;
   /** Retention control — drop mappings older than the cutoff. Returns count removed. */
   purgeOlderThan(ageMs: number): Promise<number>;
   size(): number;
 }
 
+/** Fail-closed tenant check: a scoped entry is only visible to its own project. */
+function tenantVisible(entryProjectId: string | undefined, callerProjectId: string | undefined): boolean {
+  return entryProjectId === undefined || entryProjectId === callerProjectId;
+}
+
 /** Plaintext, in-memory. Used when no encryption key is configured. */
 class EphemeralDemaskStore implements DemaskStore {
   readonly mode = 'ephemeral' as const;
-  private readonly map = new Map<string, { value: string; type: SanitizationFindingType; createdAtMs: number }>();
+  private readonly map = new Map<string, { value: string; type: SanitizationFindingType; createdAtMs: number; projectId?: string }>();
   private readonly counters = new Map<string, number>();
 
   private allocate(type: SanitizationFindingType): string {
@@ -44,13 +54,15 @@ class EphemeralDemaskStore implements DemaskStore {
     return `[${type}_${n}]`;
   }
 
-  async put(type: SanitizationFindingType, original: string): Promise<string> {
+  async put(type: SanitizationFindingType, original: string, projectId?: string): Promise<string> {
     const placeholder = this.allocate(type);
-    this.map.set(placeholder, { value: original, type, createdAtMs: Date.now() });
+    this.map.set(placeholder, { value: original, type, createdAtMs: Date.now(), ...(projectId ? { projectId } : {}) });
     return placeholder;
   }
-  async resolve(placeholder: string): Promise<string | null> {
-    return this.map.get(placeholder)?.value ?? null;
+  async resolve(placeholder: string, projectId?: string): Promise<string | null> {
+    const entry = this.map.get(placeholder);
+    if (!entry || !tenantVisible(entry.projectId, projectId)) return null;
+    return entry.value;
   }
   async purgeOlderThan(ageMs: number): Promise<number> {
     const cutoff = Date.now() - ageMs;
@@ -71,7 +83,7 @@ class EphemeralDemaskStore implements DemaskStore {
 /** AES-256-GCM encrypted values at rest (in memory). */
 class EncryptedDemaskStore implements DemaskStore {
   readonly mode = 'encrypted' as const;
-  private readonly map = new Map<string, { cipher: Buffer; type: SanitizationFindingType; createdAtMs: number }>();
+  private readonly map = new Map<string, { cipher: Buffer; type: SanitizationFindingType; createdAtMs: number; projectId?: string }>();
   private readonly counters = new Map<string, number>();
 
   constructor(private readonly key: Buffer) {}
@@ -82,18 +94,18 @@ class EncryptedDemaskStore implements DemaskStore {
     return `[${type}_${n}]`;
   }
 
-  async put(type: SanitizationFindingType, original: string): Promise<string> {
+  async put(type: SanitizationFindingType, original: string, projectId?: string): Promise<string> {
     const placeholder = this.allocate(type);
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
     const enc = Buffer.concat([cipher.update(original, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
-    this.map.set(placeholder, { cipher: Buffer.concat([iv, tag, enc]), type, createdAtMs: Date.now() });
+    this.map.set(placeholder, { cipher: Buffer.concat([iv, tag, enc]), type, createdAtMs: Date.now(), ...(projectId ? { projectId } : {}) });
     return placeholder;
   }
-  async resolve(placeholder: string): Promise<string | null> {
+  async resolve(placeholder: string, projectId?: string): Promise<string | null> {
     const entry = this.map.get(placeholder);
-    if (!entry) return null;
+    if (!entry || !tenantVisible(entry.projectId, projectId)) return null;
     const iv = entry.cipher.subarray(0, 12);
     const tag = entry.cipher.subarray(12, 28);
     const data = entry.cipher.subarray(28);
