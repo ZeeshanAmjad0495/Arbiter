@@ -241,6 +241,39 @@ const CASES: EvalCase[] = [
     context: [],
     graders: [notNull, nonEmptyArray('timeline'), nonEmptyArray('actionItems'), nonEmptyArray('regressionTests'), hasString('rootCause')],
   },
+  {
+    name: 'api-test-generator: grounded suite with auth + negative coverage',
+    workflow: 'api-test-generator',
+    requirement: 'Generate an API test suite for the loyalty-points redemption endpoint.',
+    context: [
+      {
+        title: 'Checkout API (v2)',
+        content:
+          'POST /v2/checkout/redeem — redeem loyalty points. Request fields: member_id, points_redeemed. Response fields: order_total, discount_applied, points_balance. 200 on success; 400 on insufficient points_balance; 403 on cross-member redemption.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('tests'), nonEmptyArray('fieldsReferenced'), hasString('summary')],
+  },
+  {
+    name: 'contract-drift: breaking vs non-breaking, grounded in the contracts',
+    workflow: 'contract-drift',
+    requirement: 'Analyze the drift between v2 and v3 of the redemption endpoint.',
+    context: [
+      {
+        title: 'Redemption contract v2 → v3',
+        content:
+          'OLD (v2) request: member_id, points_redeemed. NEW (v3) request: member_id, points_redeemed, idempotency_key (required). Response adds: transaction_id. Removed: legacy_discount_code.',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('changes'), nonEmptyArray('migrationActions'), hasString('summary')],
+  },
+  {
+    name: 'security-abuse-cases: prioritized taxonomy with test ideas',
+    workflow: 'security-abuse-cases',
+    requirement: 'Enumerate abuse cases for POST /v2/checkout/redeem where a member redeems loyalty points.',
+    context: [{ title: 'Checkout API (v2)', content: 'POST /v2/checkout/redeem. Fields: member_id, points_redeemed, order_total, discount_applied, points_balance.' }],
+    graders: [notNull, nonEmptyArray('abuseCases'), hasString('summary'), hasString('highestSeverity')],
+  },
 ];
 
 async function main(): Promise<void> {

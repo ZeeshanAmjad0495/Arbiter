@@ -66,9 +66,16 @@ The isolation spine was always multi-tenant (branded `ProjectId`, project-scoped
 - **Incident Postmortem Drafter** (Log/Trace Triage) — blameless timeline, root cause, typed action items (prevent/detect/mitigate/process), facts-vs-hypotheses; includes **incident-to-regression back-propagation** (the regression tests that would catch a recurrence).
 - *Deferred substrate:* live read-only observability connectors (Datadog/Grafana/Sentry/Splunk) — same read-only pattern as the Jira connector; workflows accept pasted logs/history today.
 
-## Wave 4 — API / data / non-functional authoring breadth
+## Wave 4 — API / data / non-functional authoring breadth *(partially shipped)*
 
-API Test Generator (+ Postman diff-plan) · Contract Drift / Version-Diff Impact Analyzer · Synthetic / PII-safe Test Data Generator (PII re-scan gate) · Security Abuse-Case Challenger · Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager.
+**Shipped ✓:**
+- **API Test Generator** — grounded API suite (happy/negative/boundary/auth/contract) with status codes + response assertions; endpoint, paths, and referenced fields grounded.
+- **Contract Drift Analyzer** — diffs two contract versions into breaking vs non-breaking changes with consumer impact + migration actions; changed paths grounded.
+- **Security Abuse-Case Challenger** — defensive abuse-case taxonomy (authz/injection/IDOR/replay/rate-limit/business-logic) with impact × likelihood + a test idea each.
+
+**Deferred (with reason):**
+- **Synthetic / PII-safe Test Data Generator** — needs a real *output* PII re-scan gate (the pipeline sanitizes input only today); shipping it without that gate would be unsafe theater. Pull in with the output-sanitization step.
+- **Accessibility AC & Manual-Script Generator · Performance Test-Plan Drafter · Non-Functional Result-to-Bug Triager** — straightforward authoring workflows; next Wave-4 increment.
 
 ## Wave 5 — Manual/exploratory depth & corpus reasoning (RAG-dependent)
 

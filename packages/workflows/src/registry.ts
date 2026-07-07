@@ -1268,6 +1268,178 @@ const incidentPostmortem = define<IncidentPostmortem>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Wave 4 — API / data / non-functional authoring breadth              *
+ * ------------------------------------------------------------------ */
+
+/* 15. API Test Generator -------------------------------------------- */
+
+const ApiTestSuite = z.object({
+  summary: z.string(),
+  endpoint: z.string(),
+  tests: z.array(
+    z.object({
+      name: z.string(),
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+      path: z.string(),
+      category: z.enum(['happy_path', 'negative', 'boundary', 'auth', 'contract', 'error_handling']),
+      request: z.string(),
+      expectedStatus: z.number().int(),
+      assertions: z.array(z.string()),
+    }),
+  ),
+  fieldsReferenced: z.array(z.string()),
+  coverageNotes: z.string(),
+});
+export type ApiTestSuite = z.infer<typeof ApiTestSuite>;
+
+const apiTestGenerator = define<ApiTestSuite>({
+  id: 'api-test-generator',
+  label: 'API Test Generator',
+  description: 'Generate a grounded API test suite (happy/negative/boundary/auth/contract) from an endpoint spec, with status codes and response assertions.',
+  artifactType: 'api_test_suite',
+  promptVersion: 'api-test-generator@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Endpoint to generate an API test suite for (attach the spec as context)',
+  schema: ApiTestSuite,
+  system: systemFor('api-test-generator'),
+  ui: {
+    requirementLabel: 'Endpoint (+ spec in context)',
+    requirementPlaceholder: 'Name the endpoint and paste its OpenAPI/schema…',
+    sampleRequirement: 'Generate an API test suite for the loyalty-points redemption endpoint.',
+    sampleContext: {
+      title: 'Checkout API (v2)',
+      content:
+        'POST /v2/checkout/redeem — redeem loyalty points. Request fields: member_id, points_redeemed. Response fields: order_total, discount_applied, points_balance. 200 on success; 400 on insufficient points_balance; 403 on cross-member redemption.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => [
+    { kind: 'endpoint' as const, value: o.endpoint },
+    ...o.tests.map((t) => ({ kind: 'endpoint' as const, value: t.path })),
+    ...o.fieldsReferenced.map((value) => ({ kind: 'field' as const, value })),
+  ],
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} API suite for POST /v2/checkout/redeem covering the happy path, insufficient-balance, and cross-member authorization.`,
+    endpoint: 'POST /v2/checkout/redeem',
+    tests: [
+      { name: 'Valid redemption applies a discount', method: 'POST', path: '/v2/checkout/redeem', category: 'happy_path', request: '{ member_id, points_redeemed: 10 }', expectedStatus: 200, assertions: ['discount_applied reflects points_redeemed', 'order_total is reduced', 'points_balance decreases by points_redeemed'] },
+      { name: 'Insufficient points_balance is rejected', method: 'POST', path: '/v2/checkout/redeem', category: 'negative', request: '{ member_id, points_redeemed: 999999 }', expectedStatus: 400, assertions: ['no points are deducted', 'order_total is unchanged'] },
+      { name: 'Cross-member redemption is forbidden', method: 'POST', path: '/v2/checkout/redeem', category: 'auth', request: '{ member_id: other_member, points_redeemed: 10 }', expectedStatus: 403, assertions: ['request is rejected', 'no points_balance is modified'] },
+    ],
+    fieldsReferenced: ['member_id', 'points_redeemed', 'order_total', 'discount_applied', 'points_balance'],
+    coverageNotes: 'Happy/negative/auth covered; add boundary tests at the exact points_balance limit.',
+  }),
+});
+
+/* 16. Contract Drift / Version-Diff Impact Analyzer ----------------- */
+
+const ContractDrift = z.object({
+  summary: z.string(),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  breakingCount: z.number().int().nonnegative(),
+  changes: z.array(
+    z.object({
+      path: z.string(),
+      changeType: z.enum(['added', 'removed', 'modified', 'type_changed', 'required_changed']),
+      breaking: z.boolean(),
+      description: z.string(),
+      affectedConsumers: z.string(),
+    }),
+  ),
+  migrationActions: z.array(z.string()),
+});
+export type ContractDrift = z.infer<typeof ContractDrift>;
+
+const contractDrift = define<ContractDrift>({
+  id: 'contract-drift',
+  label: 'Contract Drift Analyzer',
+  description: 'Diff two API contract versions into breaking vs non-breaking changes with consumer impact and migration actions — grounded in the contracts.',
+  artifactType: 'contract_drift',
+  promptVersion: 'contract-drift@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'API change to analyze (attach OLD and NEW contracts as context)',
+  schema: ContractDrift,
+  system: systemFor('contract-drift'),
+  ui: {
+    requirementLabel: 'API change (+ old/new contracts in context)',
+    requirementPlaceholder: 'Paste the OLD and NEW versions of the contract…',
+    sampleRequirement: 'Analyze the drift between v2 and v3 of the redemption endpoint.',
+    sampleContext: {
+      title: 'Redemption contract v2 → v3',
+      content:
+        'OLD (v2) POST /v2/checkout/redeem request: member_id, points_redeemed. NEW (v3) POST /v3/checkout/redeem request: member_id, points_redeemed, idempotency_key (required). Response adds: transaction_id. Removed: legacy_discount_code.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.changes.map((c) => ({ kind: 'field' as const, value: c.path })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} v3 adds a required idempotency_key (breaking) and a transaction_id response field (non-breaking), and removes legacy_discount_code (breaking).`,
+    riskLevel: 'high',
+    breakingCount: 2,
+    changes: [
+      { path: 'idempotency_key', changeType: 'required_changed', breaking: true, description: 'New required request field; existing callers omit it and will get 400.', affectedConsumers: 'All existing checkout callers.' },
+      { path: 'legacy_discount_code', changeType: 'removed', breaking: true, description: 'Removed request field; callers still sending it must stop.', affectedConsumers: 'Legacy promo integration.' },
+      { path: 'transaction_id', changeType: 'added', breaking: false, description: 'Additive response field; safe to ignore.', affectedConsumers: 'None (optional to consume).' },
+    ],
+    migrationActions: [
+      'Update all callers to send idempotency_key before cutting over to /v3.',
+      'Remove legacy_discount_code from the promo integration and add a contract test asserting v3 request shape.',
+    ],
+  }),
+});
+
+/* 17. Security Abuse-Case Challenger --------------------------------- */
+
+const SecurityAbuseCases = z.object({
+  summary: z.string(),
+  highestSeverity: z.enum(['low', 'medium', 'high', 'critical']),
+  abuseCases: z.array(
+    z.object({
+      category: z.enum(['broken_authz', 'injection', 'sensitive_data_exposure', 'rate_limit_dos', 'replay', 'idor', 'ssrf', 'insecure_deserialization', 'auth_bypass', 'business_logic']),
+      scenario: z.string(),
+      impact: z.enum(['low', 'medium', 'high', 'critical']),
+      likelihood: z.enum(['low', 'medium', 'high']),
+      testIdea: z.string(),
+    }),
+  ),
+  priorityOrder: z.array(z.string()),
+});
+export type SecurityAbuseCases = z.infer<typeof SecurityAbuseCases>;
+
+const securityAbuseCases = define<SecurityAbuseCases>({
+  id: 'security-abuse-cases',
+  label: 'Security Abuse-Case Challenger',
+  description: 'Enumerate defensive security abuse cases (authz, injection, IDOR, rate-limit, replay, business-logic) with impact, likelihood, and a test idea each.',
+  artifactType: 'security_abuse_cases',
+  promptVersion: 'security-abuse-cases@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Feature / endpoint to challenge with abuse cases',
+  schema: SecurityAbuseCases,
+  system: systemFor('security-abuse-cases'),
+  ui: {
+    requirementLabel: 'Feature / endpoint',
+    requirementPlaceholder: 'Describe the feature or endpoint to attack (for authorized testing)…',
+    sampleRequirement: 'Enumerate abuse cases for POST /v2/checkout/redeem where a member redeems loyalty points for a discount.',
+    sampleContext: {
+      title: 'Checkout API (v2)',
+      content: 'POST /v2/checkout/redeem. Fields: member_id, points_redeemed, order_total, discount_applied, points_balance.',
+    },
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} The dominant risks are IDOR/authorization (redeeming another member’s points_balance) and business-logic abuse (double-redeem / negative points_redeemed).`,
+    highestSeverity: 'high',
+    abuseCases: [
+      { category: 'idor', scenario: 'Redeem against another member_id to spend their points_balance.', impact: 'high', likelihood: 'medium', testIdea: 'Authenticated as member A, POST with member B’s member_id → expect 403 and no deduction.' },
+      { category: 'business_logic', scenario: 'Submit a negative or fractional points_redeemed to inflate discount_applied.', impact: 'high', likelihood: 'medium', testIdea: 'POST points_redeemed = -100 → expect 400, no credit to points_balance.' },
+      { category: 'replay', scenario: 'Replay a successful redemption to double-apply the discount.', impact: 'medium', likelihood: 'medium', testIdea: 'Resend an identical redemption → expect idempotent handling, single deduction.' },
+      { category: 'rate_limit_dos', scenario: 'Hammer the endpoint to exhaust the points service.', impact: 'medium', likelihood: 'low', testIdea: 'Burst requests → expect rate limiting, not a dependency outage.' },
+    ],
+    priorityOrder: ['idor', 'business_logic', 'replay', 'rate_limit_dos'],
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -1286,6 +1458,9 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   ciFailureTriage,
   flakyTestAdvisor,
   incidentPostmortem,
+  apiTestGenerator,
+  contractDrift,
+  securityAbuseCases,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));
