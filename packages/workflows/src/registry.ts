@@ -2018,6 +2018,315 @@ const syntheticTestData = define<SyntheticTestData>({
 });
 
 /* ------------------------------------------------------------------ *
+ * Authoring tail — remaining Wave 4 / Wave 6 workflows                *
+ * ------------------------------------------------------------------ */
+
+/* 28. Accessibility AC & Manual-Script Generator (WCAG 2.2) --------- */
+
+const AccessibilityAc = z.object({
+  summary: z.string(),
+  wcagLevel: z.enum(['A', 'AA', 'AAA']),
+  criteria: z.array(
+    z.object({
+      sc: z.string(),
+      name: z.string(),
+      requirement: z.string(),
+      howToTest: z.string(),
+      severity: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+  manualScripts: z.array(
+    z.object({
+      name: z.string(),
+      assistiveTech: z.enum(['screen_reader', 'keyboard', 'zoom', 'voice_control', 'none']),
+      steps: z.array(z.string()).min(1),
+      expected: z.string(),
+    }),
+  ),
+  gaps: z.array(z.string()),
+});
+export type AccessibilityAc = z.infer<typeof AccessibilityAc>;
+
+const accessibilityAc = define<AccessibilityAc>({
+  id: 'accessibility-ac',
+  label: 'Accessibility AC & Manual-Script Generator',
+  description: 'Derive WCAG 2.2 acceptance criteria (with SC numbers + how-to-test) and assistive-technology manual scripts for a UI feature.',
+  artifactType: 'accessibility_ac',
+  promptVersion: 'accessibility-ac@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'UI feature to derive accessibility criteria for',
+  schema: AccessibilityAc,
+  system: systemFor('accessibility-ac'),
+  ui: {
+    requirementLabel: 'UI feature',
+    requirementPlaceholder: 'Describe the UI feature/flow to make accessible…',
+    sampleRequirement: 'Loyalty-points redemption at checkout: a member toggles redemption and sees the discount applied.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} WCAG 2.2 AA criteria for the redemption toggle and discount confirmation, with keyboard and screen-reader scripts.`,
+    wcagLevel: 'AA',
+    criteria: [
+      { sc: '1.4.3', name: 'Contrast (Minimum)', requirement: 'The discount confirmation text meets 4.5:1 contrast.', howToTest: 'Measure contrast of the confirmation text against its background.', severity: 'medium' },
+      { sc: '2.1.1', name: 'Keyboard', requirement: 'The redemption toggle is fully operable by keyboard.', howToTest: 'Tab to the toggle, activate with Space/Enter, confirm state changes.', severity: 'high' },
+      { sc: '4.1.3', name: 'Status Messages', requirement: 'The applied-discount status is announced to assistive tech.', howToTest: 'With a screen reader, redeem and confirm the discount is announced without focus change.', severity: 'high' },
+    ],
+    manualScripts: [
+      { name: 'Keyboard-only redemption', assistiveTech: 'keyboard', steps: ['Tab to the redeem toggle.', 'Activate with Enter.'], expected: 'Discount is applied and focus order remains logical.' },
+      { name: 'Screen-reader discount announcement', assistiveTech: 'screen_reader', steps: ['Enable the screen reader.', 'Redeem points.'], expected: 'The applied discount is announced as a status message.' },
+    ],
+    gaps: ['No visible focus indicator specified for the toggle (2.4.7).'],
+  }),
+});
+
+/* 29. Performance Test-Plan Drafter --------------------------------- */
+
+const PerformanceTestPlan = z.object({
+  summary: z.string(),
+  endpoint: z.string(),
+  workloadModel: z.string(),
+  slos: z.array(z.object({ metric: z.string(), target: z.string() })),
+  scenarios: z.array(
+    z.object({
+      type: z.enum(['load', 'stress', 'soak', 'spike', 'scalability']),
+      description: z.string(),
+      passCriterion: z.string(),
+    }),
+  ),
+  environmentNeeds: z.array(z.string()),
+  risks: z.array(z.string()),
+});
+export type PerformanceTestPlan = z.infer<typeof PerformanceTestPlan>;
+
+const performanceTestPlan = define<PerformanceTestPlan>({
+  id: 'performance-test-plan',
+  label: 'Performance Test-Plan Drafter',
+  description: 'Draft a performance test plan (workload model, SLOs, load/stress/soak/spike scenarios with measurable pass criteria) grounded in the endpoint.',
+  artifactType: 'performance_test_plan',
+  promptVersion: 'performance-test-plan@v1',
+  defaultRiskTier: 'high',
+  inputNoun: 'Feature / endpoint to plan performance testing for (attach the spec)',
+  schema: PerformanceTestPlan,
+  system: systemFor('performance-test-plan'),
+  ui: {
+    requirementLabel: 'Feature / endpoint (+ SLOs in context)',
+    requirementPlaceholder: 'Name the endpoint and paste expected load / SLOs…',
+    sampleRequirement: 'Draft a performance test plan for the loyalty-points redemption endpoint.',
+    sampleContext: {
+      title: 'Redemption perf context',
+      content: 'Endpoint: POST /v2/checkout/redeem. Expected peak: 300 rps at checkout. Target SLO: p95 < 500ms, error rate < 0.1%.',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => [{ kind: 'endpoint' as const, value: o.endpoint }],
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Performance plan for POST /v2/checkout/redeem at a 300 rps checkout peak with a p95 < 500ms SLO.`,
+    endpoint: 'POST /v2/checkout/redeem',
+    workloadModel: 'Steady 300 rps checkout traffic with a redemption on ~40% of orders; realistic member/points distribution.',
+    slos: [
+      { metric: 'p95 latency', target: '< 500ms' },
+      { metric: 'error rate', target: '< 0.1%' },
+    ],
+    scenarios: [
+      { type: 'load', description: 'Sustained 300 rps for 30 min.', passCriterion: 'p95 < 500ms and error rate < 0.1% throughout.' },
+      { type: 'spike', description: 'Ramp 300 → 900 rps in 60s (flash-sale).', passCriterion: 'No error-rate breach; recovery to SLO within 2 min.' },
+      { type: 'soak', description: '150 rps for 4 hours.', passCriterion: 'No latency drift or memory growth (no leak).' },
+    ],
+    environmentNeeds: ['Production-like staging with the real points service; synthetic members across points tiers.'],
+    risks: ['Shared points-service capacity may cap throughput before the endpoint does.'],
+  }),
+});
+
+/* 30. Non-Functional Result-to-Bug Triager -------------------------- */
+
+const NfrResultTriage = z.object({
+  summary: z.string(),
+  findings: z.array(
+    z.object({
+      category: z.enum(['performance', 'security', 'accessibility', 'reliability', 'scalability', 'usability']),
+      observation: z.string(),
+      threshold: z.string(),
+      actual: z.string(),
+      severity: z.enum(['low', 'medium', 'high', 'critical']),
+      isBug: z.boolean(),
+      recommendation: z.string(),
+    }),
+  ),
+  bugsToFile: z.array(z.string()),
+});
+export type NfrResultTriage = z.infer<typeof NfrResultTriage>;
+
+const nfrResultTriage = define<NfrResultTriage>({
+  id: 'nfr-result-triage',
+  label: 'Non-Functional Result-to-Bug Triager',
+  description: 'Triage non-functional results (perf/security/a11y) against thresholds into bugs with severity and recommended actions.',
+  artifactType: 'nfr_result_triage',
+  promptVersion: 'nfr-result-triage@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Non-functional test results to triage (with thresholds)',
+  schema: NfrResultTriage,
+  system: systemFor('nfr-result-triage'),
+  ui: {
+    requirementLabel: 'Non-functional results (+ thresholds)',
+    requirementPlaceholder: 'Paste perf/security/a11y results and the thresholds they were measured against…',
+    sampleRequirement:
+      'Perf run: p95 was 780ms (SLO p95 < 500ms). ZAP found a missing rate limit on /v2/checkout/redeem. Contrast on the confirmation was 3.1:1 (needs 4.5:1).',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Two threshold breaches worth filing (p95 latency, contrast) and one security finding (missing rate limit).`,
+    findings: [
+      { category: 'performance', observation: 'p95 latency over SLO on redemption.', threshold: 'p95 < 500ms', actual: '780ms', severity: 'high', isBug: true, recommendation: 'File a performance bug; profile the points-service call.' },
+      { category: 'security', observation: 'No rate limit on the redemption endpoint.', threshold: 'Rate limiting required', actual: 'None', severity: 'high', isBug: true, recommendation: 'File a security bug; add per-member rate limiting.' },
+      { category: 'accessibility', observation: 'Confirmation text contrast below AA.', threshold: '4.5:1', actual: '3.1:1', severity: 'medium', isBug: true, recommendation: 'File an a11y bug; darken the confirmation text.' },
+    ],
+    bugsToFile: ['p95 latency > SLO on POST /v2/checkout/redeem', 'Missing rate limit on redemption', 'Confirmation text contrast < 4.5:1'],
+  }),
+});
+
+/* 31. Persona-Driven Scenario Generator ----------------------------- */
+
+const PersonaScenarios = z.object({
+  summary: z.string(),
+  personas: z.array(z.object({ name: z.string(), goal: z.string(), context: z.string() })),
+  scenarios: z.array(
+    z.object({
+      persona: z.string(),
+      scenario: z.string(),
+      expectedOutcome: z.string(),
+      priority: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+});
+export type PersonaScenarios = z.infer<typeof PersonaScenarios>;
+
+const personaScenarios = define<PersonaScenarios>({
+  id: 'persona-scenarios',
+  label: 'Persona-Driven Scenario Generator',
+  description: 'Define distinct user personas and generate test scenarios reflecting how each uses the feature.',
+  artifactType: 'persona_scenarios',
+  promptVersion: 'persona-scenarios@v1',
+  defaultRiskTier: 'low',
+  inputNoun: 'Feature to generate persona-driven scenarios for',
+  schema: PersonaScenarios,
+  system: systemFor('persona-scenarios'),
+  ui: {
+    requirementLabel: 'Feature',
+    requirementPlaceholder: 'Describe the feature to test through user personas…',
+    sampleRequirement: 'Loyalty-points redemption at checkout.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Three personas (power redeemer, first-timer, assistive-tech user) with scenarios reflecting their distinct goals.`,
+    personas: [
+      { name: 'Power redeemer', goal: 'Maximize discount using a large points balance.', context: 'Frequent buyer with thousands of points.' },
+      { name: 'First-timer', goal: 'Understand what redemption does before committing.', context: 'New member, cautious, small balance.' },
+      { name: 'Assistive-tech user', goal: 'Redeem points using a screen reader.', context: 'Relies on keyboard + screen reader.' },
+    ],
+    scenarios: [
+      { persona: 'Power redeemer', scenario: 'Redeem the maximum allowed points on a high-value order.', expectedOutcome: 'Discount caps correctly; no negative balance.', priority: 'high' },
+      { persona: 'First-timer', scenario: 'Preview the discount before confirming redemption.', expectedOutcome: 'A clear, reversible preview is shown before points are deducted.', priority: 'medium' },
+      { persona: 'Assistive-tech user', scenario: 'Complete redemption with keyboard + screen reader only.', expectedOutcome: 'All steps are operable and announced.', priority: 'high' },
+    ],
+  }),
+});
+
+/* 32. Mobile Test-Case & Gesture-Flow Generator --------------------- */
+
+const MobileTestCases = z.object({
+  summary: z.string(),
+  deviceMatrix: z.array(z.string()),
+  testCases: z.array(
+    z.object({
+      category: z.enum(['gestures', 'orientation', 'interruptions', 'connectivity', 'permissions', 'battery_background', 'fragmentation']),
+      name: z.string(),
+      steps: z.array(z.string()).min(1),
+      expectedResult: z.string(),
+      priority: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+});
+export type MobileTestCases = z.infer<typeof MobileTestCases>;
+
+const mobileTestCases = define<MobileTestCases>({
+  id: 'mobile-test-cases',
+  label: 'Mobile Test-Case & Gesture-Flow Generator',
+  description: 'Generate mobile-specific test cases (gestures, orientation, interruptions, connectivity, permissions) with a device/OS matrix.',
+  artifactType: 'mobile_test_cases',
+  promptVersion: 'mobile-test-cases@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Mobile feature to generate test cases for',
+  schema: MobileTestCases,
+  system: systemFor('mobile-test-cases'),
+  ui: {
+    requirementLabel: 'Mobile feature',
+    requirementPlaceholder: 'Describe the mobile feature/flow…',
+    sampleRequirement: 'Redeem loyalty points in the mobile checkout flow.',
+    outputView: 'generic',
+  },
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Mobile-specific cases for redemption: interruption during redeem, offline/online transition, and gesture operation.`,
+    deviceMatrix: ['iOS 17 (iPhone 15)', 'Android 14 (Pixel 8)', 'Small screen (SE)', 'Tablet (landscape)'],
+    testCases: [
+      { category: 'interruptions', name: 'Incoming call mid-redemption', steps: ['Start redemption.', 'Receive a call.', 'Return to the app.'], expectedResult: 'Redemption state is preserved; no double-deduction.', priority: 'high' },
+      { category: 'connectivity', name: 'Redeem across an offline→online transition', steps: ['Go offline mid-redeem.', 'Reconnect.'], expectedResult: 'A clear retryable error, then success with a single deduction.', priority: 'high' },
+      { category: 'orientation', name: 'Rotate during the confirmation', steps: ['Redeem.', 'Rotate to landscape at confirmation.'], expectedResult: 'Layout adapts; the discount stays visible.', priority: 'medium' },
+      { category: 'gestures', name: 'Swipe-back during redemption', steps: ['Start redeem.', 'Swipe back.'], expectedResult: 'No partial redemption is committed.', priority: 'medium' },
+    ],
+  }),
+});
+
+/* 33. Mutation Survivor Explainer ----------------------------------- */
+
+const MutationSurvivors = z.object({
+  summary: z.string(),
+  coverageGap: z.string(),
+  survivors: z.array(
+    z.object({
+      mutantId: z.string(),
+      location: z.string(),
+      behaviorChange: z.string(),
+      whyNotKilled: z.string(),
+      killingTest: z.string(),
+      priority: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
+});
+export type MutationSurvivors = z.infer<typeof MutationSurvivors>;
+
+const mutationSurvivors = define<MutationSurvivors>({
+  id: 'mutation-survivors',
+  label: 'Mutation Survivor Explainer',
+  description: 'Explain surviving mutants as concrete test-coverage gaps and the exact test that would kill each — mutant ids grounded.',
+  artifactType: 'mutation_survivors',
+  promptVersion: 'mutation-survivors@v1',
+  defaultRiskTier: 'medium',
+  inputNoun: 'Surviving mutants to explain (attach the mutation report)',
+  schema: MutationSurvivors,
+  system: systemFor('mutation-survivors'),
+  ui: {
+    requirementLabel: 'Surviving mutants (+ report in context)',
+    requirementPlaceholder: 'Paste the surviving mutants (id, operator, location)…',
+    sampleRequirement: 'Explain the surviving mutants from the redemption module mutation run.',
+    sampleContext: {
+      title: 'Mutation survivors',
+      content:
+        'M1: ConditionalBoundary at redeem.ts:42 (points_redeemed <= balance became <). M2: NegateConditional at redeem.ts:58 (skipped the cross-member check).',
+    },
+    outputView: 'generic',
+  },
+  extractClaims: (o) => o.survivors.map((s) => ({ kind: 'entity' as const, value: s.mutantId })),
+  stub: () => ({
+    summary: `${OFFLINE_NOTE} Two survivors reveal missing boundary and authorization assertions in the redemption tests.`,
+    coverageGap: 'The redemption suite lacks an exact-balance boundary test and a cross-member authorization assertion.',
+    survivors: [
+      { mutantId: 'M1', location: 'redeem.ts:42', behaviorChange: 'Allowed redeeming exactly the full balance to be rejected (<= became <).', whyNotKilled: 'No test redeems exactly points_balance.', killingTest: 'Redeem points_redeemed == points_balance and assert success.', priority: 'high' },
+      { mutantId: 'M2', location: 'redeem.ts:58', behaviorChange: 'Removed the cross-member authorization check.', whyNotKilled: 'No test attempts a cross-member redemption.', killingTest: 'Redeem against another member_id and assert 403 with no deduction.', priority: 'high' },
+    ],
+  }),
+});
+
+/* ------------------------------------------------------------------ *
  * Registry + generic runner                                           *
  * ------------------------------------------------------------------ */
 
@@ -2049,6 +2358,12 @@ export const WORKFLOWS: ReadonlyArray<WorkflowDef<unknown>> = [
   migrationTestPlan,
   execQualityReport,
   syntheticTestData,
+  accessibilityAc,
+  performanceTestPlan,
+  nfrResultTriage,
+  personaScenarios,
+  mobileTestCases,
+  mutationSurvivors,
 ] as ReadonlyArray<WorkflowDef<unknown>>;
 
 const BY_ID = new Map(WORKFLOWS.map((w) => [w.id, w]));

@@ -379,6 +379,54 @@ const CASES: EvalCase[] = [
     graders: [notNull, grounded, nonEmptyArray('fields'), nonEmptyArray('sampleRows'), noExportBlock],
   },
 
+  {
+    name: 'accessibility-ac: WCAG criteria + assistive-tech scripts',
+    workflow: 'accessibility-ac',
+    requirement: 'Loyalty-points redemption at checkout: a member toggles redemption and sees the discount applied.',
+    context: [],
+    graders: [notNull, nonEmptyArray('criteria'), nonEmptyArray('manualScripts'), hasString('summary')],
+  },
+  {
+    name: 'performance-test-plan: grounded endpoint + measurable scenarios',
+    workflow: 'performance-test-plan',
+    requirement: 'Draft a performance test plan for the loyalty-points redemption endpoint.',
+    context: [{ title: 'Redemption perf context', content: 'Endpoint: POST /v2/checkout/redeem. Target SLO: p95 < 500ms, error rate < 0.1%.' }],
+    graders: [notNull, grounded, nonEmptyArray('scenarios'), nonEmptyArray('slos'), hasString('summary')],
+  },
+  {
+    name: 'nfr-result-triage: threshold breaches become bugs',
+    workflow: 'nfr-result-triage',
+    requirement: 'Perf run: p95 was 780ms (SLO p95 < 500ms). Missing rate limit on redemption. Contrast 3.1:1 (needs 4.5:1).',
+    context: [],
+    graders: [notNull, nonEmptyArray('findings'), nonEmptyArray('bugsToFile'), hasString('summary')],
+  },
+  {
+    name: 'persona-scenarios: distinct personas + scenarios',
+    workflow: 'persona-scenarios',
+    requirement: 'Loyalty-points redemption at checkout.',
+    context: [],
+    graders: [notNull, nonEmptyArray('personas'), nonEmptyArray('scenarios'), hasString('summary')],
+  },
+  {
+    name: 'mobile-test-cases: mobile-specific coverage + device matrix',
+    workflow: 'mobile-test-cases',
+    requirement: 'Redeem loyalty points in the mobile checkout flow.',
+    context: [],
+    graders: [notNull, nonEmptyArray('testCases'), nonEmptyArray('deviceMatrix'), hasString('summary')],
+  },
+  {
+    name: 'mutation-survivors: grounded mutant ids + killing tests',
+    workflow: 'mutation-survivors',
+    requirement: 'Explain the surviving mutants from the redemption module mutation run.',
+    context: [
+      {
+        title: 'Mutation survivors',
+        content: 'M1: ConditionalBoundary at redeem.ts:42. M2: NegateConditional at redeem.ts:58 (skipped the cross-member check).',
+      },
+    ],
+    graders: [notNull, grounded, nonEmptyArray('survivors'), hasString('summary'), hasString('coverageGap')],
+  },
+
   // --- Adversarial negatives: the anti-hallucination guarantee per grounded
   // workflow. Context is stripped of the ids the output cites, so every cited
   // id/endpoint/field is ungrounded → export must block + needs_changes. ---

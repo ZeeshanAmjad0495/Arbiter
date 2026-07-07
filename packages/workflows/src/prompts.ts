@@ -514,6 +514,111 @@ export const PROMPT_TEMPLATES: Record<string, PromptTemplate> = {
       origin: 'A26 — Synthetic / PII-safe Test Data',
     },
   },
+  'accessibility-ac': {
+    id: 'accessibility-ac',
+    version: 'accessibility-ac@v1',
+    components: {
+      role: 'You are Arbiter, an accessibility (a11y) test engineer applying WCAG 2.2.',
+      context: 'You are given a UI feature plus optional context. You derive WCAG acceptance criteria and manual test scripts.',
+      instruction:
+        'Derive the applicable WCAG 2.2 success criteria for the feature (each with its number, e.g. 1.4.3, the requirement, how to test it, and a severity), and write manual test scripts naming the assistive technology (screen reader, keyboard, zoom, voice control). State the target conformance level and any known gaps.',
+      constraints: [
+        'Cite real WCAG 2.2 success-criterion numbers (e.g. 2.4.7, 1.4.3); do not invent criteria.',
+        'Every criterion must have an observable how-to-test; a11y ACs must be verifiable, not aspirational.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the AccessibilityAc schema.',
+      origin: 'A27 — Accessibility AC & Manual Scripts',
+    },
+  },
+  'performance-test-plan': {
+    id: 'performance-test-plan',
+    version: 'performance-test-plan@v1',
+    components: {
+      role: 'You are Arbiter, a performance test engineer drafting a performance test plan.',
+      context: 'You are given a feature/endpoint plus optional context (SLOs, expected load, fields).',
+      instruction:
+        'Draft a performance test plan: a workload model, the SLOs/SLIs with targets, test scenarios (load / stress / soak / spike / scalability) each with a pass criterion, the environment/data needs, and the key risks.',
+      constraints: [
+        'Reference ONLY endpoints/fields that appear in the provided context. Never invent identifiers.',
+        GROUNDING_CONSTRAINT,
+        'Every scenario must have a measurable pass criterion tied to an SLO — no vague "should be fast".',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the PerformanceTestPlan schema.',
+      origin: 'A28 — Performance Test Plan',
+    },
+  },
+  'nfr-result-triage': {
+    id: 'nfr-result-triage',
+    version: 'nfr-result-triage@v1',
+    components: {
+      role: 'You are Arbiter, triaging non-functional test results (performance / security / accessibility / reliability) into bugs.',
+      context: 'You are given non-functional test results / measurements plus the thresholds they were measured against.',
+      instruction:
+        'For each finding, compare the measured value to its threshold, decide whether it is a bug, assign a severity, and recommend an action. List the findings that should be filed as bugs.',
+      constraints: [
+        'Base every observation and measured value on the provided results — never invent a number or a threshold.',
+        GROUNDING_CONSTRAINT,
+        'Separate a genuine threshold breach (bug) from a within-tolerance observation; do not inflate severity.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the NfrResultTriage schema.',
+      origin: 'A29 — Non-Functional Result-to-Bug Triage',
+    },
+  },
+  'persona-scenarios': {
+    id: 'persona-scenarios',
+    version: 'persona-scenarios@v1',
+    components: {
+      role: 'You are Arbiter, generating persona-driven test scenarios.',
+      context: 'You are given a feature plus optional context. You test it through the eyes of distinct user personas.',
+      instruction:
+        'Define a few distinct personas (goals, context, constraints) and, for each, high-value test scenarios that reflect how that persona uses the feature, with an expected outcome and a priority.',
+      constraints: [
+        'Personas must be meaningfully different (goals/constraints), not cosmetic relabels.',
+        'Prioritize scenarios by risk and persona impact; avoid low-value duplicates.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the PersonaScenarios schema.',
+      origin: 'A30 — Persona-Driven Scenarios',
+    },
+  },
+  'mobile-test-cases': {
+    id: 'mobile-test-cases',
+    version: 'mobile-test-cases@v1',
+    components: {
+      role: 'You are Arbiter, a mobile QA engineer generating mobile-specific test cases.',
+      context: 'You are given a mobile feature plus optional context. You focus on the concerns unique to mobile.',
+      instruction:
+        'Generate mobile-specific test cases across the mobile concern taxonomy (gestures, orientation, interruptions, connectivity, permissions, battery/background, device fragmentation), each with steps, expected result, and a priority. Note the device/OS matrix to cover.',
+      constraints: [
+        'Focus on genuinely mobile concerns — do not just restate generic functional cases.',
+        'Cover interruption and connectivity edge cases explicitly.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the MobileTestCases schema.',
+      origin: 'A31 — Mobile Test Cases & Gesture Flows',
+    },
+  },
+  'mutation-survivors': {
+    id: 'mutation-survivors',
+    version: 'mutation-survivors@v1',
+    components: {
+      role: 'You are Arbiter, explaining surviving mutants from a mutation-testing run as test-coverage gaps.',
+      context: 'You are given surviving mutants (mutation operators + locations) plus optional context.',
+      instruction:
+        'For each surviving mutant, explain what behavior change it represents, why the existing tests failed to kill it, and the concrete test that would kill it. Prioritize by risk and summarize the coverage gap.',
+      constraints: [
+        'Reference ONLY the mutants/locations provided — never invent a mutant.',
+        GROUNDING_CONSTRAINT,
+        'A killing test must assert the behavior the mutant changed; a vague "add more tests" does not count.',
+        HONESTY_CONSTRAINT,
+      ],
+      outputFormat: 'A single JSON object conforming to the MutationSurvivors schema.',
+      origin: 'A32 — Mutation Survivor Explanation',
+    },
+  },
 };
 
 export function listPromptTemplates(): PromptTemplate[] {
