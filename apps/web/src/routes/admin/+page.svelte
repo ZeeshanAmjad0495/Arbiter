@@ -83,8 +83,8 @@
   <section class="card invite">
     <h3>Invite a person</h3>
     <div class="invite-row">
-      <input type="email" placeholder="name@company.com" bind:value={inviteEmail} />
-      <select bind:value={inviteRole}>
+      <input type="email" placeholder="name@company.com" bind:value={inviteEmail} aria-label="Email to invite" />
+      <select bind:value={inviteRole} aria-label="Role for the invited person">
         <option value="qa">QA</option>
         <option value="qa_lead">QA lead</option>
         <option value="admin">Admin</option>
@@ -117,7 +117,7 @@
             <tr>
               <td class="email">{u.email}{u.hasKey ? '' : ' (no key yet)'}</td>
               <td>
-                <select value={u.role} onchange={(e) => changeRole(u, (e.target as HTMLSelectElement).value)}>
+                <select value={u.role} aria-label={`Role for ${u.email}`} onchange={(e) => changeRole(u, (e.target as HTMLSelectElement).value)}>
                   <option value="qa">QA</option>
                   <option value="qa_lead">QA lead</option>
                   <option value="admin">Admin</option>
