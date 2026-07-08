@@ -12,3 +12,4 @@ coverage/
 backups/
 garak.*
 *.report.jsonl
+.scratch/
