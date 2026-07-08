@@ -32,15 +32,18 @@ async function main(): Promise<void> {
   await engine.repos.projects.upsert(project);
   await engine.repos.users.upsert(actor);
 
-  // Key-based auth. Bootstrap an admin: in non-production always (re)issue + log a
-  // key so there's a way in; in production only if the admin has none yet.
+  // Key-based auth. Bootstrap an admin: issue a key ONLY if the admin has none yet,
+  // so the key is STABLE across restarts (it isn't rotated on every dev reload).
   const auth = new AuthService(engine.repos, config.env.ARBITER_SESSION_TTL_HOURS * 3600 * 1000);
   const adminEmail = config.env.ARBITER_ADMIN_EMAIL;
   const admin = await engine.repos.users.getByEmail(adminEmail);
-  if (config.env.NODE_ENV !== 'production' || !admin?.accessKeyHash) {
+  if (!admin?.accessKeyHash) {
     const { key } = await auth.issueKey(adminEmail, 'admin');
     // eslint-disable-next-line no-console
-    console.log(`\n🔑  Arbiter admin login\n    email: ${adminEmail}\n    key:   ${key}\n`);
+    console.log(`\n🔑  Arbiter admin login\n    email: ${adminEmail}\n    key:   ${key}\n    (re-issue anytime: POST /v1/auth/issue-key as admin)\n`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`\n🔑  Arbiter auth enabled — admin: ${adminEmail} (key already issued; use it or re-issue via POST /v1/auth/issue-key)\n`);
   }
 
   const app = buildServer({ engine, defaultProjectId: project.id, defaultActorId: actor.id, auth });
