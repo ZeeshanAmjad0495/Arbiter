@@ -483,6 +483,12 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
         return { cipher: rows[0]!.cipher as Uint8Array, type: rows[0]!.finding_type as string };
       });
     },
+    async exportOlderThan(projectId, cutoffMs) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query('SELECT placeholder, finding_type, cipher, created_at_ms FROM demask_entries WHERE project_id = $1 AND created_at_ms < $2', [projectId, cutoffMs]);
+        return rows.map((r) => ({ placeholder: r.placeholder as string, type: r.finding_type as string, cipher: r.cipher as Uint8Array, createdAtMs: Number(r.created_at_ms) }));
+      });
+    },
     async purgeOlderThan(projectId, cutoffMs) {
       return withProjectTx(pool, projectId, async (client) => {
         const { rowCount } = await client.query('DELETE FROM demask_entries WHERE project_id = $1 AND created_at_ms < $2', [projectId, cutoffMs]);

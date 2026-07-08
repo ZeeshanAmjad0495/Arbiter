@@ -65,6 +65,18 @@ export class AuthService {
     return { token, expiresAt: session.expiresAt, user: toPublicUser(user) };
   }
 
+  /**
+   * Step-up re-auth: confirm the given access key belongs to `userId`. Used to
+   * gate destructive actions (re-enter your key to confirm). Constant-time compare;
+   * always hashes even when the user/hash is missing to avoid a timing oracle.
+   */
+  async verifyKey(userId: UserId, key: string): Promise<boolean> {
+    const user = await this.repos.users.get(userId);
+    const expected = user?.accessKeyHash ?? sha256(genToken());
+    const ok = hashEquals(expected, sha256(key));
+    return Boolean(user?.accessKeyHash) && ok;
+  }
+
   /** Resolve the current user from a session token; null if missing/expired (expired sessions are pruned). */
   async authenticate(token: string): Promise<{ user: PublicUser; userId: UserId } | null> {
     if (!token) return null;

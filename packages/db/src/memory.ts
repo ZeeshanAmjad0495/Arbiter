@@ -236,6 +236,14 @@ export function createMemoryRepositories(): RepositoryBundle {
       const entry = demaskEntries.get(`${projectId}::${placeholder}`);
       return entry ? { cipher: entry.cipher, type: entry.type } : null;
     },
+    async exportOlderThan(projectId: ProjectId, cutoffMs: number) {
+      const rows: { placeholder: string; type: string; cipher: Uint8Array; createdAtMs: number }[] = [];
+      const prefix = `${projectId}::`;
+      for (const [k, v] of demaskEntries) {
+        if (k.startsWith(prefix) && v.createdAtMs < cutoffMs) rows.push({ placeholder: k.slice(prefix.length), type: v.type, cipher: v.cipher, createdAtMs: v.createdAtMs });
+      }
+      return rows;
+    },
     async purgeOlderThan(projectId: ProjectId, cutoffMs: number) {
       let removed = 0;
       for (const [k, v] of demaskEntries) {

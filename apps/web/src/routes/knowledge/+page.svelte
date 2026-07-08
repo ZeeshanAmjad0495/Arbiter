@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { addKnowledge, deleteKnowledge, listKnowledge, type KnowledgeDoc } from '$lib/api';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
   let docs = $state<KnowledgeDoc[]>([]);
   let title = $state('');
@@ -33,13 +34,22 @@
     }
   }
 
-  async function remove(id: string) {
-    if (!confirm('Delete this knowledge document?')) return;
+  let pendingDelete = $state<KnowledgeDoc | null>(null);
+  let deleting = $state(false);
+  let deleteError = $state<string | null>(null);
+
+  async function confirmDelete(confirmKey: string) {
+    if (!pendingDelete) return;
+    deleting = true;
+    deleteError = null;
     try {
-      await deleteKnowledge(id);
+      await deleteKnowledge(pendingDelete.id, confirmKey);
+      pendingDelete = null;
       await load();
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to delete';
+      deleteError = e instanceof Error ? e.message : 'Failed to delete';
+    } finally {
+      deleting = false;
     }
   }
 
@@ -74,13 +84,24 @@
               <span class="tag">{d.sourceType}</span>
               <span class="tag muted">{d.classification}</span>
             </div>
-            <button class="ghost" onclick={() => remove(d.id)} title="Delete">✕</button>
+            <button class="ghost" onclick={() => { deleteError = null; pendingDelete = d; }} title="Delete">✕</button>
           </li>
         {/each}
       </ul>
     {/if}
   </section>
 </section>
+
+{#if pendingDelete}
+  <ConfirmDialog
+    title="Delete knowledge document"
+    message={`Permanently delete "${pendingDelete.title}" and its chunks. It will no longer ground generated artifacts.`}
+    busy={deleting}
+    error={deleteError}
+    oncancel={() => (pendingDelete = null)}
+    onconfirm={confirmDelete}
+  />
+{/if}
 
 <style>
   .wrap {

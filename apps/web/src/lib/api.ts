@@ -188,9 +188,16 @@ export async function addSchema(body: { name: string; schema: string }): Promise
   return (await res.json()).schema;
 }
 
-export async function deleteSchema(id: string): Promise<void> {
-  const res = await apiFetch(`/v1/schemas/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`delete schema ${res.status}`);
+export async function deleteSchema(id: string, confirmKey: string): Promise<void> {
+  const res = await apiFetch(`/v1/schemas/${id}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmKey }) });
+  if (!res.ok) throw new Error(await stepUpError(res, 'delete schema'));
+}
+
+/** Turn a destructive-action failure into a friendly message (step-up = wrong key). */
+async function stepUpError(res: Response, what: string): Promise<string> {
+  if (res.status === 403) return 'That access key did not match. Re-enter your key to confirm.';
+  const detail = await res.text().catch(() => '');
+  return `Failed to ${what} (${res.status}): ${detail}`;
 }
 
 export async function validateData(schemaId: string, data: string): Promise<ValidateResult> {
@@ -387,16 +394,13 @@ export async function resolveDemask(text: string): Promise<{ text: string; resol
   return res.json();
 }
 
-export async function purgeDemask(olderThanHours: number): Promise<{ removed: number }> {
+export async function purgeDemask(olderThanHours: number, confirmKey: string): Promise<{ removed: number }> {
   const res = await apiFetch('/v1/demask/purge', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ olderThanHours }),
+    body: JSON.stringify({ olderThanHours, confirmKey }),
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`Purge failed (${res.status}): ${detail}`);
-  }
+  if (!res.ok) throw new Error(await stepUpError(res, 'purge mappings'));
   return res.json();
 }
 
@@ -427,9 +431,9 @@ export async function addKnowledge(body: { title: string; content: string; sourc
   return (await res.json()).document;
 }
 
-export async function deleteKnowledge(id: string): Promise<void> {
-  const res = await apiFetch(`/v1/knowledge/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`delete knowledge ${res.status}`);
+export async function deleteKnowledge(id: string, confirmKey: string): Promise<void> {
+  const res = await apiFetch(`/v1/knowledge/${id}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmKey }) });
+  if (!res.ok) throw new Error(await stepUpError(res, 'delete document'));
 }
 
 export interface StatusInfo {

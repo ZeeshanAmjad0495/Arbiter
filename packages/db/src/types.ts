@@ -121,6 +121,8 @@ export interface DemaskRepository {
   store(projectId: ProjectId, type: string, cipher: Uint8Array, createdAtMs: number): Promise<string>;
   /** Ciphertext for a placeholder, iff it belongs to `projectId` (fail-closed). */
   getCipher(projectId: ProjectId, placeholder: string): Promise<{ cipher: Uint8Array; type: string } | null>;
+  /** Ciphertext rows older than the cutoff — snapshotted (compressed) before a retention purge. */
+  exportOlderThan(projectId: ProjectId, cutoffMs: number): Promise<{ placeholder: string; type: string; cipher: Uint8Array; createdAtMs: number }[]>;
   /** Retention control — drop this project's entries older than the cutoff. Returns count removed. */
   purgeOlderThan(projectId: ProjectId, cutoffMs: number): Promise<number>;
   count(projectId: ProjectId): Promise<number>;

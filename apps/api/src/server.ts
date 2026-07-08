@@ -37,6 +37,7 @@ import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from
 import type { AuthService } from './auth';
 import { fetchConfluencePage } from './confluence';
 import { fetchJiraIssue } from './jira';
+import { writeSnapshot } from './snapshot';
 import { validateData } from './validate';
 
 /** Request fields set by the auth hook. */
@@ -165,6 +166,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   /** The acting user for attribution — the authenticated user, or the default actor. */
   const actorFor = (request: FastifyRequest): UserId => (request as WithAuth).authUserId ?? deps.defaultActorId;
+
+  // Step-up re-auth for destructive actions: the caller must re-enter their access
+  // key. Enforced only when auth is enabled; skipped for the dev/no-auth path.
+  async function requireStepUp(request: FastifyRequest, reply: FastifyReply, confirmKey: unknown): Promise<boolean> {
+    if (!deps.auth) return true;
+    const uid = (request as WithAuth).authUserId;
+    if (!uid || typeof confirmKey !== 'string' || !(await deps.auth.verifyKey(uid, confirmKey))) {
+      reply.status(403).send({ error: 'step_up_required', message: 'Re-enter your access key to confirm this destructive action.' });
+      return false;
+    }
+    return true;
+  }
+  const ConfirmBody = z.object({ confirmKey: z.string().optional() });
 
   const modes = {
     persistence: config.persistence,
@@ -351,6 +365,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!projectId) return reply;
     const idCheck = ProjectSchemaId.safeParse(request.params.id);
     if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    if (!(await requireStepUp(request, reply, ConfirmBody.safeParse(request.body ?? {}).data?.confirmKey))) return reply;
+    const existing = await deps.engine.repos.schemas.get(projectId, idCheck.data);
+    if (!existing) return reply.status(404).send({ error: 'not_found' });
+    writeSnapshot('schema', projectId, existing); // recoverable backup before delete
     const ok = await deps.engine.repos.schemas.delete(projectId, idCheck.data);
     return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
   });
@@ -584,6 +602,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!projectId) return reply;
     const idCheck = KnowledgeDocId.safeParse(request.params.id);
     if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    if (!(await requireStepUp(request, reply, ConfirmBody.safeParse(request.body ?? {}).data?.confirmKey))) return reply;
+    const doc = (await deps.engine.repos.knowledge.listDocuments(projectId)).find((d) => d.id === idCheck.data);
+    if (!doc) return reply.status(404).send({ error: 'not_found' });
+    const chunks = (await deps.engine.repos.knowledge.listChunks(projectId)).filter((c) => c.docId === idCheck.data);
+    writeSnapshot('knowledge', projectId, { doc, chunks }); // recoverable backup before delete
     const ok = await deps.engine.repos.knowledge.deleteDocument(projectId, idCheck.data);
     return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
   });
@@ -658,10 +681,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if ((request as WithAuth).authRole !== 'admin') return reply.status(403).send({ error: 'forbidden' });
     const projectId = await resolveProject(request, reply);
     if (!projectId) return reply;
-    const parsed = z.object({ olderThanHours: z.number().positive().max(8760).default(720) }).safeParse(request.body ?? {});
+    const parsed = z.object({ olderThanHours: z.number().positive().max(8760).default(720), confirmKey: z.string().optional() }).safeParse(request.body ?? {});
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    if (!(await requireStepUp(request, reply, parsed.data.confirmKey))) return reply;
 
-    const removed = await deps.engine.sanitizer.demask.purgeProjectOlderThan(projectId, parsed.data.olderThanHours * 3600 * 1000);
+    const ageMs = parsed.data.olderThanHours * 3600 * 1000;
+    // Snapshot the (encrypted) rows before purging — durable Postgres data only;
+    // ephemeral/in-memory modes have nothing recoverable to back up.
+    if (config.persistence === 'postgres' && config.demask === 'encrypted') {
+      const rows = await deps.engine.repos.demask.exportOlderThan(projectId, Date.now() - ageMs);
+      if (rows.length) writeSnapshot('demask', projectId, rows.map((r) => ({ placeholder: r.placeholder, type: r.type, cipherB64: Buffer.from(r.cipher).toString('base64'), createdAtMs: r.createdAtMs })));
+    }
+    const removed = await deps.engine.sanitizer.demask.purgeProjectOlderThan(projectId, ageMs);
     await deps.engine.repos.audit.append(
       AuditEvent.parse({
         id: newAuditEventId(),

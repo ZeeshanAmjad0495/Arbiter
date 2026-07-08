@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { addSchema, deleteSchema, listSchemas, validateData, type SchemaInfo, type ValidateResult } from '$lib/api';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import Icon from '$lib/components/Icon.svelte';
 
   let schemas = $state<SchemaInfo[]>([]);
@@ -44,14 +45,23 @@
     }
   }
 
-  async function remove(id: string) {
-    if (!confirm('Delete this schema?')) return;
+  let pendingDelete = $state<SchemaInfo | null>(null);
+  let deleting = $state(false);
+  let deleteError = $state<string | null>(null);
+
+  async function confirmDelete(confirmKey: string) {
+    if (!pendingDelete) return;
+    deleting = true;
+    deleteError = null;
     try {
-      await deleteSchema(id);
-      if (selectedId === id) selectedId = '';
+      await deleteSchema(pendingDelete.id, confirmKey);
+      if (selectedId === pendingDelete.id) selectedId = '';
+      pendingDelete = null;
       await load();
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to delete';
+      deleteError = e instanceof Error ? e.message : 'Failed to delete';
+    } finally {
+      deleting = false;
     }
   }
 
@@ -134,7 +144,7 @@
       {:else}
         <ul class="list">
           {#each schemas as s}
-            <li><b>{s.name}</b><button class="ghost small" style="margin:0" aria-label="Delete schema" onclick={() => remove(s.id)}><Icon name="trash" size={14} /></button></li>
+            <li><b>{s.name}</b><button class="ghost small" style="margin:0" aria-label="Delete schema" onclick={() => { deleteError = null; pendingDelete = s; }}><Icon name="trash" size={14} /></button></li>
           {/each}
         </ul>
       {/if}
@@ -150,6 +160,17 @@
     </section>
   </div>
 </section>
+
+{#if pendingDelete}
+  <ConfirmDialog
+    title="Delete schema"
+    message={`Permanently delete the schema "${pendingDelete.name}". Data files can no longer be validated against it.`}
+    busy={deleting}
+    error={deleteError}
+    oncancel={() => (pendingDelete = null)}
+    onconfirm={confirmDelete}
+  />
+{/if}
 
 <style>
   .wrap {

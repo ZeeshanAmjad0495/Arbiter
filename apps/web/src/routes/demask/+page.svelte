@@ -1,5 +1,6 @@
 <script lang="ts">
   import { purgeDemask, resolveDemask } from '$lib/api';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import Icon from '$lib/components/Icon.svelte';
 
   // Re-identify
@@ -13,6 +14,7 @@
   let purging = $state(false);
   let purgeMsg = $state<string | null>(null);
   let purgeError = $state<string | null>(null);
+  let confirmOpen = $state(false);
 
   async function reidentify() {
     if (!masked.trim()) return;
@@ -28,14 +30,14 @@
     }
   }
 
-  async function runPurge() {
-    if (!confirm(`Permanently delete this project's de-mask mappings older than ${days} day(s)? Re-identification of those placeholders will no longer be possible.`)) return;
+  async function runPurge(confirmKey: string) {
     purging = true;
     purgeError = null;
     purgeMsg = null;
     try {
-      const r = await purgeDemask(days * 24);
+      const r = await purgeDemask(days * 24, confirmKey);
       purgeMsg = `Removed ${r.removed} mapping${r.removed === 1 ? '' : 's'}.`;
+      confirmOpen = false;
     } catch (e) {
       purgeError = e instanceof Error ? e.message : 'Failed';
     } finally {
@@ -89,14 +91,25 @@
           <span class="unit">days</span>
         </div>
       </label>
-      <button class="danger-btn" disabled={purging} onclick={runPurge}>
-        <Icon name="trash" size={14} /> {purging ? 'Purging…' : 'Purge old mappings'}
+      <button class="danger-btn" disabled={purging} onclick={() => { purgeError = null; confirmOpen = true; }}>
+        <Icon name="trash" size={14} /> Purge old mappings
       </button>
-      {#if purgeError}<p class="error" role="alert">{purgeError}</p>{/if}
       {#if purgeMsg}<div class="banner good" style="margin-top:12px">{purgeMsg}</div>{/if}
     </section>
   </div>
 </section>
+
+{#if confirmOpen}
+  <ConfirmDialog
+    title="Purge de-mask mappings"
+    message={`Permanently delete this project's de-mask mappings older than ${days} day(s). Re-identification of those placeholders will no longer be possible.`}
+    confirmLabel="Purge old mappings"
+    busy={purging}
+    error={purgeError}
+    oncancel={() => (confirmOpen = false)}
+    onconfirm={runPurge}
+  />
+{/if}
 
 <style>
   .wrap {

@@ -91,7 +91,8 @@ describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
     await app.ready();
     const login = async (email: string, role: 'admin' | 'qa') => {
       const { key } = await auth.issueKey(email, role);
-      return (await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, key } })).json().token as string;
+      const token = (await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, key } })).json().token as string;
+      return { token, key };
     };
     return { app, engine, projectId, login };
   }
@@ -102,10 +103,10 @@ describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
     const masked = (await engine.sanitizer.sanitize('Email jane@example.com about claim.', projectId)).sanitizedText;
     expect(masked).toContain('[EMAIL_ADDRESS_1]');
 
-    const qaTok = await login('qa@acme.com', 'qa');
+    const { token: qaTok } = await login('qa@acme.com', 'qa');
     expect((await app.inject({ method: 'POST', url: '/v1/demask/resolve', headers: { authorization: `Bearer ${qaTok}` }, payload: { text: masked } })).statusCode).toBe(403);
 
-    const adminTok = await login('admin@acme.com', 'admin');
+    const { token: adminTok } = await login('admin@acme.com', 'admin');
     const res = await app.inject({ method: 'POST', url: '/v1/demask/resolve', headers: { authorization: `Bearer ${adminTok}` }, payload: { text: masked } });
     expect(res.statusCode).toBe(200);
     expect(res.json().text).toContain('jane@example.com');
@@ -118,17 +119,22 @@ describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
     await app.close();
   });
 
-  it('purge is admin-only, tenant-scoped, and audited by count', async () => {
+  it('purge is admin-only and requires step-up re-auth (correct access key)', async () => {
     const { app, engine, projectId, login } = await setup();
     await engine.sanitizer.sanitize('Email jane@example.com now.', projectId); // seed a mapping
 
-    const qaTok = await login('qa2@acme.com', 'qa');
-    expect((await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${qaTok}` }, payload: { olderThanHours: 1 } })).statusCode).toBe(403);
+    const qa = await login('qa2@acme.com', 'qa');
+    expect((await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${qa.token}` }, payload: { olderThanHours: 1, confirmKey: qa.key } })).statusCode).toBe(403); // not admin
 
-    const adminTok = await login('admin2@acme.com', 'admin');
-    const res = await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${adminTok}` }, payload: { olderThanHours: 1 } });
+    const admin = await login('admin2@acme.com', 'admin');
+    // No confirmKey → step-up required.
+    expect((await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${admin.token}` }, payload: { olderThanHours: 1 } })).statusCode).toBe(403);
+    // Wrong key → step-up rejected.
+    expect((await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${admin.token}` }, payload: { olderThanHours: 1, confirmKey: 'ak_wrong' } })).statusCode).toBe(403);
+    // Correct key → allowed.
+    const res = await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${admin.token}` }, payload: { olderThanHours: 1, confirmKey: admin.key } });
     expect(res.statusCode).toBe(200);
-    expect(typeof res.json().removed).toBe('number'); // fresh mapping isn't 1h old → 0, but the plumbing works
+    expect(typeof res.json().removed).toBe('number');
 
     const audit = await engine.repos.audit.listByProject(projectId);
     expect(audit.some((a) => a.action === 'demask.purge')).toBe(true);
@@ -141,7 +147,7 @@ describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
     await engine.repos.projects.upsert(Project.parse({ id: other, name: 'o', classification: 'internal', createdAt: nowIso() }));
     // Allocate a placeholder under `other`, then try to resolve it as the default project.
     const masked = (await engine.sanitizer.sanitize('Email zed@example.com now.', other)).sanitizedText;
-    const adminTok = await login('admin@acme.com', 'admin');
+    const { token: adminTok } = await login('admin@acme.com', 'admin');
     const res = await app.inject({ method: 'POST', url: '/v1/demask/resolve', headers: { authorization: `Bearer ${adminTok}` }, payload: { text: masked } });
     expect(res.statusCode).toBe(200);
     expect(res.json().text).toContain('[EMAIL_ADDRESS_1]'); // left masked
