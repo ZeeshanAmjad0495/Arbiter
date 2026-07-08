@@ -51,14 +51,29 @@ export class RealTestRunner implements TestRunner {
 
   private async runPlaywright(script: string, dir: string): Promise<RunnerResult> {
     await writeFile(join(dir, 'arbiter.spec.js'), script, 'utf8');
-    // Minimal config so `playwright test` runs headless with no project scaffolding.
-    await writeFile(join(dir, 'playwright.config.js'), 'module.exports = { testDir: ".", reporter: [["json"]], use: { headless: true } };', 'utf8');
-    const { stdout, stderr, code } = await run('npx', ['--yes', 'playwright', 'test', 'arbiter.spec.js', '--reporter=json'], dir, this.timeoutMs);
+    // The spec lives in an isolated temp dir, but @playwright/test must resolve —
+    // so we run from the app's cwd (its node_modules has it) and point the config's
+    // absolute testDir at the temp dir. JSON reporter writes to a file (not stdout)
+    // so runner banners can never corrupt the parse.
+    const reportPath = join(dir, 'report.json');
+    const configPath = join(dir, 'arbiter.pw.config.cjs');
+    await writeFile(
+      configPath,
+      `module.exports = { testDir: ${JSON.stringify(dir)}, reporter: [['json', { outputFile: ${JSON.stringify(reportPath)} }]], use: { headless: true }, fullyParallel: true };`,
+      'utf8',
+    );
+    const { stderr, code } = await run('npx', ['playwright', 'test', '--config', configPath], process.cwd(), this.timeoutMs);
+    let raw: string;
+    try {
+      raw = await readFile(reportPath, 'utf8');
+    } catch {
+      return this.errorResult(`Playwright produced no report — is @playwright/test installed with browsers (npx playwright install)? ${stderr}`, code);
+    }
     let cases;
     try {
-      cases = parsePlaywrightJson(stdout);
+      cases = parsePlaywrightJson(raw);
     } catch {
-      return this.errorResult(`Playwright produced no parseable report — is @playwright/test installed with browsers? ${stderr}`, code);
+      return this.errorResult(`Playwright report was not parseable. ${stderr}`, code);
     }
     const durationMs = cases.reduce((s, c) => s + c.durationMs, 0);
     const { summary, status } = summarize(cases, durationMs);

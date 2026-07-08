@@ -70,6 +70,16 @@ describe('real-runner reporter parsers', () => {
     expect(cases[1]!.message).toContain('Expected 401'); // collapsed, bounded
   });
 
+  it('strips ANSI colour codes from Playwright failure messages', () => {
+    const esc = String.fromCharCode(27);
+    const result = { status: 'failed', duration: 5, error: { message: `${esc}[31mExpected 2${esc}[39m got 1` } };
+    const spec = { title: 'boom', ok: false, tests: [{ results: [result] }] };
+    const report = { suites: [{ specs: [spec] }] };
+    const cases = parsePlaywrightJson(JSON.stringify(report));
+    expect(cases[0]!.message).toBe('Expected 2 got 1');
+    expect(cases[0]!.message).not.toContain(esc);
+  });
+
   it('flattens k6 summary checks (any fail → failed case)', () => {
     const json = JSON.stringify({
       root_group: {

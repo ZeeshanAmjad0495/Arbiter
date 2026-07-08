@@ -1,9 +1,13 @@
 import type { ExecutionCase } from '@arbiter/core';
 
-/** Trim a failure message to a bounded, single-ish line — never a full stack/script dump. */
+// Strip ANSI colour codes (ESC [ … m) that Playwright embeds in error messages.
+// Built from a char code so no literal control byte lives in the source.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/** Trim a failure message to a bounded, single-ish line — no ANSI, no full stack/script dump. */
 function trimMessage(raw: unknown): string | undefined {
   if (typeof raw !== 'string' || raw.trim() === '') return undefined;
-  return raw.replace(/\s+/g, ' ').trim().slice(0, 500);
+  return raw.replace(ANSI, '').replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
 /* ----------------------------- Playwright ----------------------------- *
