@@ -22,7 +22,14 @@
   let selectedProjectId = $state<string>('');
   let showCreate = $state(false);
   let newName = $state('');
+  let newClassification = $state('internal');
+  let newDescription = $state('');
+  let newRepoUrl = $state('');
+  let newRepoPath = $state('');
+  let newContext = $state('');
+  let newSchemas = $state<{ name: string; schema: string }[]>([]);
   let creating = $state(false);
+  let createError = $state('');
   let projMenuOpen = $state(false);
   let statusOpen = $state(false);
   let sidebarOpen = $state(false);
@@ -93,17 +100,31 @@
     location.reload();
   }
 
+  function addSchemaRow() {
+    newSchemas = [...newSchemas, { name: '', schema: '' }];
+  }
+  function removeSchemaRow(i: number) {
+    newSchemas = newSchemas.filter((_, idx) => idx !== i);
+  }
+
   async function submitCreate() {
     if (!newName.trim()) return;
     creating = true;
+    createError = '';
     try {
-      const project = await createProject({ name: newName.trim() });
-      newName = '';
-      showCreate = false;
+      const project = await createProject({
+        name: newName.trim(),
+        classification: newClassification,
+        description: newDescription.trim() || undefined,
+        repoUrl: newRepoUrl.trim() || undefined,
+        repoPath: newRepoPath.trim() || undefined,
+        context: newContext.trim() || undefined,
+        schemas: newSchemas.filter((s) => s.name.trim() && s.schema.trim()).map((s) => ({ name: s.name.trim(), schema: s.schema })),
+      });
       setActiveProject(project.id);
       location.reload();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to create project');
+      createError = e instanceof Error ? e.message : 'Failed to create project';
     } finally {
       creating = false;
     }
@@ -220,12 +241,59 @@
 </div>
 
 {#if showCreate}
-  <Modal title="New project" subtitle="Projects isolate runs, review queue, knowledge, and metrics." onclose={() => (showCreate = false)}>
+  <Modal title="New project" subtitle="Set up a fresh, isolated project — its runs, review queue, knowledge, schemas, and metrics are its own." onclose={() => (showCreate = false)}>
+    <div class="form-grid">
+      <label class="field">
+        <span>Project name *</span>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" placeholder="e.g. Checkout revamp" bind:value={newName} autofocus />
+      </label>
+      <label class="field">
+        <span>Data classification</span>
+        <select bind:value={newClassification}>
+          <option value="public">public</option>
+          <option value="internal">internal</option>
+          <option value="confidential">confidential</option>
+          <option value="restricted">restricted</option>
+        </select>
+      </label>
+    </div>
+
     <label class="field">
-      <span>Project name</span>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input type="text" placeholder="e.g. Checkout revamp" bind:value={newName} autofocus onkeydown={(e) => e.key === 'Enter' && submitCreate()} />
+      <span>Description <span class="opt">optional</span></span>
+      <input type="text" placeholder="What is this project about?" bind:value={newDescription} />
     </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Repository URL <span class="opt">optional</span></span>
+        <input type="text" placeholder="https://github.com/org/repo" bind:value={newRepoUrl} />
+      </label>
+      <label class="field">
+        <span>Repository path <span class="opt">optional</span></span>
+        <input type="text" placeholder="/Users/you/src/repo" bind:value={newRepoPath} />
+      </label>
+    </div>
+
+    <label class="field">
+      <span>Initial context / knowledge <span class="opt">optional — seeded into this project's knowledge</span></span>
+      <textarea rows="3" placeholder="Paste a schema, spec, or notes to ground this project…" bind:value={newContext}></textarea>
+    </label>
+
+    <div class="field">
+      <span>JSON Schemas <span class="opt">optional — saved for the Schema Validator</span></span>
+      {#each newSchemas as s, i}
+        <div class="schema-row">
+          <input type="text" placeholder="Schema name (e.g. Order v2)" bind:value={s.name} />
+          <textarea rows="2" placeholder={'{ "type": "object", "required": ["id"] }'} bind:value={s.schema}></textarea>
+          <button class="ghost small" style="margin:0" aria-label="Remove schema" onclick={() => removeSchemaRow(i)}><Icon name="close" size={14} /></button>
+        </div>
+      {/each}
+      <button class="ghost small" style="margin:6px 0 0;display:inline-flex;align-items:center;gap:6px" onclick={addSchemaRow}><Icon name="plus" size={14} /> Add schema</button>
+    </div>
+
+    {#if createError}<p class="error" role="alert">{createError}</p>{/if}
+
     <div class="modal-actions">
       <button class="ghost" onclick={() => (showCreate = false)}>Cancel</button>
       <button class="primary" style="width:auto" disabled={creating || !newName.trim()} onclick={submitCreate}>

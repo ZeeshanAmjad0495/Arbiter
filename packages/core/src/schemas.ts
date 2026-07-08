@@ -243,9 +243,28 @@ export const Project = z.object({
   id: ProjectId,
   name: z.string(),
   classification: DataClassification.default('internal'),
+  /** Optional setup metadata captured at create time. */
+  description: z.string().optional(),
+  repoUrl: z.string().optional(),
+  repoPath: z.string().optional(),
   createdAt: z.string().datetime(),
 });
 export type Project = z.infer<typeof Project>;
+
+/* Per-project JSON Schemas — saved once, then reused to validate data files. */
+export const ProjectSchemaId = z.string().uuid().brand<'ProjectSchemaId'>();
+export type ProjectSchemaId = z.infer<typeof ProjectSchemaId>;
+export const newProjectSchemaId = (): ProjectSchemaId => ProjectSchemaId.parse(randomUUID());
+
+export const ProjectSchema = z.object({
+  id: ProjectSchemaId,
+  projectId: ProjectId,
+  name: z.string(),
+  /** The JSON Schema document (arbitrary JSON). */
+  schema: z.unknown(),
+  createdAt: z.string().datetime(),
+});
+export type ProjectSchema = z.infer<typeof ProjectSchema>;
 
 export const UserRole = z.enum(['qa', 'qa_lead', 'admin']);
 export type UserRole = z.infer<typeof UserRole>;

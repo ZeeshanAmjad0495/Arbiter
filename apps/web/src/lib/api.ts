@@ -52,7 +52,17 @@ export async function getMetrics(): Promise<QualityMetrics> {
   return (await res.json()).metrics;
 }
 
-export async function createProject(body: { name: string; classification?: string }): Promise<ProjectInfo> {
+export interface CreateProjectInput {
+  name: string;
+  classification?: string;
+  description?: string;
+  repoUrl?: string;
+  repoPath?: string;
+  context?: string;
+  schemas?: { name: string; schema: string }[];
+}
+
+export async function createProject(body: CreateProjectInput): Promise<ProjectInfo> {
   const res = await apiFetch('/v1/projects', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -63,6 +73,67 @@ export async function createProject(body: { name: string; classification?: strin
     throw new Error(`Create project failed (${res.status}): ${detail}`);
   }
   return (await res.json()).project;
+}
+
+/* ----- Per-project JSON Schemas ----- */
+
+export interface SchemaInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export async function listSchemas(): Promise<SchemaInfo[]> {
+  const res = await apiFetch('/v1/schemas');
+  if (!res.ok) throw new Error(`schemas ${res.status}`);
+  return (await res.json()).schemas;
+}
+
+export async function getSchema(id: string): Promise<{ id: string; name: string; schema: unknown; createdAt: string }> {
+  const res = await apiFetch(`/v1/schemas/${id}`);
+  if (!res.ok) throw new Error(`schema ${res.status}`);
+  return (await res.json()).schema;
+}
+
+export async function addSchema(body: { name: string; schema: string }): Promise<SchemaInfo> {
+  const res = await apiFetch('/v1/schemas', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Add schema failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()).schema;
+}
+
+export async function deleteSchema(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/schemas/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`delete schema ${res.status}`);
+}
+
+export async function validateData(schemaId: string, data: string): Promise<ValidateResult> {
+  const res = await apiFetch(`/v1/schemas/${schemaId}/validate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ data }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Validation failed (${res.status}): ${detail}`);
+  }
+  return res.json();
+}
+
+export interface ValidateError {
+  path: string;
+  message: string;
+  keyword: string;
+}
+export interface ValidateResult {
+  valid: boolean;
+  errors: ValidateError[];
 }
 
 export interface Finding {

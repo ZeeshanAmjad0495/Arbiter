@@ -12,10 +12,13 @@ import {
   KnowledgeDocument,
   Project,
   ProjectId,
+  ProjectSchema,
+  ProjectSchemaId,
   ReviewLog,
   newAuditEventId,
   newKnowledgeDocId,
   newProjectId,
+  newProjectSchemaId,
   newReviewLogId,
   nowIso,
   unifiedDiff,
@@ -77,6 +80,18 @@ const JIRA_KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
 const CreateProjectBody = z.object({
   name: z.string().min(1).max(120),
   classification: DataClassification.default('internal'),
+  description: z.string().max(4000).optional(),
+  repoUrl: z.string().max(500).optional(),
+  repoPath: z.string().max(1000).optional(),
+  /** Optional initial project context — seeded into the knowledge store. */
+  context: z.string().max(200_000).optional(),
+  /** Optional named JSON Schemas (schema is a JSON string) — saved to the project. */
+  schemas: z.array(z.object({ name: z.string().min(1).max(200), schema: z.string().min(1).max(200_000) })).max(20).optional(),
+});
+
+const SchemaBody = z.object({
+  name: z.string().min(1).max(200),
+  schema: z.string().min(1).max(200_000), // JSON string
 });
 
 export interface ServerDeps {
@@ -160,14 +175,97 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.post('/v1/projects', async (request, reply) => {
     const parsed = CreateProjectBody.safeParse(request.body ?? {});
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const { name, classification, description, repoUrl, repoPath, context, schemas } = parsed.data;
+
+    // Validate any schema JSON up front so we don't half-create the project.
+    const parsedSchemas: { name: string; schema: unknown }[] = [];
+    for (const s of schemas ?? []) {
+      try {
+        parsedSchemas.push({ name: s.name, schema: JSON.parse(s.schema) });
+      } catch {
+        return reply.status(400).send({ error: 'invalid_schema_json', schema: s.name });
+      }
+    }
+
     const project = Project.parse({
       id: newProjectId(),
-      name: parsed.data.name,
-      classification: parsed.data.classification,
+      name,
+      classification,
+      ...(description ? { description } : {}),
+      ...(repoUrl ? { repoUrl } : {}),
+      ...(repoPath ? { repoPath } : {}),
       createdAt: nowIso(),
     });
     await deps.engine.repos.projects.upsert(project);
+
+    // Seed the project's OWN context into knowledge (sanitized — never a PHI sink).
+    if (context && context.trim()) {
+      const safe = (await deps.engine.sanitizer.sanitize(context)).sanitizedText;
+      const docId = newKnowledgeDocId();
+      await deps.engine.repos.knowledge.addDocument(
+        KnowledgeDocument.parse({
+          id: docId,
+          projectId: project.id,
+          title: 'Project context',
+          sourceType: 'paste',
+          citation: 'knowledge://project-context',
+          classification,
+          createdAt: nowIso(),
+        }),
+        buildChunks(project.id, docId, safe),
+      );
+    }
+    // Save any provided schemas.
+    for (const s of parsedSchemas) {
+      await deps.engine.repos.schemas.add(
+        ProjectSchema.parse({ id: newProjectSchemaId(), projectId: project.id, name: s.name, schema: s.schema, createdAt: nowIso() }),
+      );
+    }
+
     return reply.status(201).send({ project });
+  });
+
+  // ----- Per-project JSON Schemas (saved once; used by the Schema Validator) -----
+  app.get('/v1/schemas', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const list = await deps.engine.repos.schemas.list(projectId);
+    return { schemas: list.map((s) => ({ id: s.id, name: s.name, createdAt: s.createdAt })) };
+  });
+
+  app.get<{ Params: { id: string } }>('/v1/schemas/:id', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const idCheck = ProjectSchemaId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    const s = await deps.engine.repos.schemas.get(projectId, idCheck.data);
+    return s ? { schema: s } : reply.status(404).send({ error: 'not_found' });
+  });
+
+  app.post('/v1/schemas', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = SchemaBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    let schema: unknown;
+    try {
+      schema = JSON.parse(parsed.data.schema);
+    } catch {
+      return reply.status(400).send({ error: 'invalid_schema_json' });
+    }
+    const saved = await deps.engine.repos.schemas.add(
+      ProjectSchema.parse({ id: newProjectSchemaId(), projectId, name: parsed.data.name, schema, createdAt: nowIso() }),
+    );
+    return reply.status(201).send({ schema: { id: saved.id, name: saved.name, createdAt: saved.createdAt } });
+  });
+
+  app.delete<{ Params: { id: string } }>('/v1/schemas/:id', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const idCheck = ProjectSchemaId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    const ok = await deps.engine.repos.schemas.delete(projectId, idCheck.data);
+    return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
   });
 
   // Read-only Jira fetch-by-ticket-key (grounding pull-forward).

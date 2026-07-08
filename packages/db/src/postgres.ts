@@ -9,6 +9,7 @@ import {
   KnowledgeDocument,
   Project,
   type ProjectId,
+  ProjectSchema,
   ReviewLog,
   User,
   type WorkflowRunId,
@@ -20,6 +21,7 @@ import type {
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
+  SchemaRepository,
   UserRepository,
 } from './types';
 
@@ -63,27 +65,69 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     idle_in_transaction_session_timeout: 30_000,
   });
 
+  const PROJECT_COLS = 'id, name, classification, description, repo_url, repo_path, created_at';
+  const rowToProject = (row: Record<string, unknown>): Project =>
+    Project.parse({
+      id: row.id,
+      name: row.name,
+      classification: row.classification,
+      description: row.description ?? undefined,
+      repoUrl: row.repo_url ?? undefined,
+      repoPath: row.repo_path ?? undefined,
+      createdAt: iso(row.created_at as Date | string),
+    });
+
   const projects: ProjectRepository = {
     async upsert(project) {
       await pool.query(
-        `INSERT INTO projects (id, name, classification, created_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, classification = EXCLUDED.classification`,
-        [project.id, project.name, project.classification, project.createdAt],
+        `INSERT INTO projects (id, name, classification, description, repo_url, repo_path, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, classification = EXCLUDED.classification,
+           description = EXCLUDED.description, repo_url = EXCLUDED.repo_url, repo_path = EXCLUDED.repo_path`,
+        [project.id, project.name, project.classification, project.description ?? null, project.repoUrl ?? null, project.repoPath ?? null, project.createdAt],
       );
       return project;
     },
     async get(id) {
-      const { rows } = await pool.query('SELECT id, name, classification, created_at FROM projects WHERE id = $1', [id]);
-      const row = rows[0];
-      if (!row) return null;
-      return Project.parse({ id: row.id, name: row.name, classification: row.classification, createdAt: iso(row.created_at) });
+      const { rows } = await pool.query(`SELECT ${PROJECT_COLS} FROM projects WHERE id = $1`, [id]);
+      return rows[0] ? rowToProject(rows[0]) : null;
     },
     async list() {
-      const { rows } = await pool.query('SELECT id, name, classification, created_at FROM projects ORDER BY created_at');
-      return rows.map((row) =>
-        Project.parse({ id: row.id, name: row.name, classification: row.classification, createdAt: iso(row.created_at) }),
+      const { rows } = await pool.query(`SELECT ${PROJECT_COLS} FROM projects ORDER BY created_at`);
+      return rows.map(rowToProject);
+    },
+  };
+
+  const schemas: SchemaRepository = {
+    async add(schema) {
+      await withProjectTx(pool, schema.projectId, (client) =>
+        client.query(`INSERT INTO project_schemas (id, project_id, name, schema, created_at) VALUES ($1, $2, $3, $4, $5)`, [
+          schema.id,
+          schema.projectId,
+          schema.name,
+          JSON.stringify(schema.schema ?? null),
+          schema.createdAt,
+        ]),
       );
+      return schema;
+    },
+    async list(projectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(`SELECT id, project_id, name, schema, created_at FROM project_schemas WHERE project_id = $1 ORDER BY created_at DESC`, [projectId]);
+        return rows.map(rowToSchema);
+      });
+    },
+    async get(projectId, id) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(`SELECT id, project_id, name, schema, created_at FROM project_schemas WHERE project_id = $1 AND id = $2`, [projectId, id]);
+        return rows[0] ? rowToSchema(rows[0]) : null;
+      });
+    },
+    async delete(projectId, id) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rowCount } = await client.query(`DELETE FROM project_schemas WHERE project_id = $1 AND id = $2`, [projectId, id]);
+        return (rowCount ?? 0) > 0;
+      });
     },
   };
 
@@ -331,6 +375,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     audit,
     reviews,
     knowledge,
+    schemas,
     async applyReviewDecision(write) {
       return withProjectTx(pool, write.projectId, async (client) => {
         const { rows } =
@@ -425,6 +470,16 @@ function rowToKnowledgeDoc(row: Record<string, unknown>): KnowledgeDocument {
     sourceType: row.source_type,
     citation: row.citation,
     classification: row.classification,
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToSchema(row: Record<string, unknown>): ProjectSchema {
+  return ProjectSchema.parse({
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    schema: row.schema, // node-pg auto-parses jsonb
     createdAt: iso(row.created_at as Date | string),
   });
 }

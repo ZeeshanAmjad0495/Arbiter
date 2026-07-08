@@ -8,6 +8,8 @@ import type {
   KnowledgeDocument,
   Project,
   ProjectId,
+  ProjectSchema,
+  ProjectSchemaId,
   ReviewLog,
   User,
   UserId,
@@ -20,6 +22,7 @@ import type {
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
+  SchemaRepository,
   UserRepository,
 } from './types';
 
@@ -148,6 +151,26 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  const projectSchemas: ProjectSchema[] = [];
+  const schemaRepo: SchemaRepository = {
+    async add(schema: ProjectSchema) {
+      projectSchemas.push(schema);
+      return schema;
+    },
+    async list(projectId: ProjectId) {
+      return projectSchemas.filter((s) => s.projectId === projectId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    },
+    async get(projectId: ProjectId, id: ProjectSchemaId) {
+      return projectSchemas.find((s) => s.projectId === projectId && s.id === id) ?? null;
+    },
+    async delete(projectId: ProjectId, id: ProjectSchemaId) {
+      const i = projectSchemas.findIndex((s) => s.projectId === projectId && s.id === id);
+      if (i < 0) return false;
+      projectSchemas.splice(i, 1);
+      return true;
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
@@ -156,6 +179,7 @@ export function createMemoryRepositories(): RepositoryBundle {
     audit: auditRepo,
     reviews: reviewRepo,
     knowledge: knowledgeRepo,
+    schemas: schemaRepo,
     async applyReviewDecision(write) {
       const updated = await artifactRepo.update(write.projectId, write.artifactId, {
         status: write.status,

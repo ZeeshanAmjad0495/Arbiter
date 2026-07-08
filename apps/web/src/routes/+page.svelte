@@ -64,21 +64,29 @@
     }
   });
 
-  function applyWorkflow(meta: WorkflowMeta) {
-    requirement = meta.ui.sampleRequirement;
-    contexts = meta.ui.sampleContext
-      ? [{ title: meta.ui.sampleContext.title, content: meta.ui.sampleContext.content, sourceType: 'schema' }]
-      : [{ title: '', content: '', sourceType: 'paste' }];
+  // A workflow opens with a BLANK form (the project's own inputs), not demo data.
+  function resetForm(meta: WorkflowMeta) {
+    requirement = '';
+    contexts = [{ title: '', content: '', sourceType: 'paste' }];
     riskTier = meta.defaultRiskTier;
     simulateHallucination = false;
     outcome = null;
     error = '';
   }
 
+  // Opt-in: load the illustrative sample for this workflow.
+  function loadExample() {
+    if (!selected) return;
+    requirement = selected.ui.sampleRequirement;
+    contexts = selected.ui.sampleContext
+      ? [{ title: selected.ui.sampleContext.title, content: selected.ui.sampleContext.content, sourceType: 'schema' }]
+      : [{ title: '', content: '', sourceType: 'paste' }];
+  }
+
   function openWorkflow(id: string) {
     selectedId = id;
     const meta = workflows.find((w) => w.id === id);
-    if (meta) applyWorkflow(meta);
+    if (meta) resetForm(meta);
     window.scrollTo({ top: 0 });
   }
   function backToCatalog() {
@@ -193,13 +201,12 @@
   <!-- ===== Run view ===== -->
   <div class="runview-top">
     <button class="back-link" onclick={backToCatalog}><Icon name="back" size={15} /> Workflows</button>
-    <div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span aria-hidden="true" style="display:inline-flex"><Icon name={categoryOf(selected.id)} size={18} /></span>
-        <strong style="font-size:16px">{selected.label}</strong>
-        <span class="risk-dot {selected.defaultRiskTier}" title="{selected.defaultRiskTier} risk"></span>
-      </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span aria-hidden="true" style="display:inline-flex"><Icon name={categoryOf(selected.id)} size={18} /></span>
+      <strong style="font-size:16px">{selected.label}</strong>
+      <span class="risk-dot {selected.defaultRiskTier}" title="{selected.defaultRiskTier} risk"></span>
     </div>
+    <button class="ghost small" style="margin:0 0 0 auto" type="button" onclick={loadExample}>Load example</button>
   </div>
 
   <div class="layout">

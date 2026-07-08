@@ -8,6 +8,8 @@ import type {
   KnowledgeDocument,
   Project,
   ProjectId,
+  ProjectSchema,
+  ProjectSchemaId,
   ReviewLog,
   User,
   UserId,
@@ -76,6 +78,14 @@ export interface KnowledgeRepository {
   listChunks(projectId: ProjectId): Promise<KnowledgeChunk[]>;
 }
 
+/** Per-project saved JSON Schemas (project-scoped; used by the Schema Validator). */
+export interface SchemaRepository {
+  add(schema: ProjectSchema): Promise<ProjectSchema>;
+  list(projectId: ProjectId): Promise<ProjectSchema[]>;
+  get(projectId: ProjectId, id: ProjectSchemaId): Promise<ProjectSchema | null>;
+  delete(projectId: ProjectId, id: ProjectSchemaId): Promise<boolean>;
+}
+
 export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
@@ -84,6 +94,7 @@ export interface RepositoryBundle {
   readonly audit: AuditRepository;
   readonly reviews: ReviewRepository;
   readonly knowledge: KnowledgeRepository;
+  readonly schemas: SchemaRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).

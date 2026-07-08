@@ -331,8 +331,45 @@ a {
   border-radius: 14px;
   box-shadow: 0 24px 60px var(--shadow-lg);
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
+  max-height: 88vh;
+  overflow-y: auto;
   padding: 22px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.field .opt {
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.schema-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: start;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--inset);
+}
+.schema-row input {
+  grid-column: 1 / -1;
+}
+.schema-row textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
 }
 .modal h3 {
   font-size: 17px;
