@@ -32,7 +32,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Unit tests
+      - name: Unit + integration + API contract tests
         run: pnpm test
 
       - name: Workflow eval gate
@@ -41,5 +41,44 @@ jobs:
       - name: Red-team + RAG eval gate
         run: pnpm eval:redteam
 
+      - name: LLM-output tests (promptfoo)
+        run: pnpm test:llm
+
       - name: Web typecheck / a11y (svelte-check)
         run: pnpm --filter @arbiter/web run check
+
+  e2e:
+    name: Browser E2E + a11y
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Boots the offline, no-auth API + web dev server (see playwright.config.ts) and
+      # runs the browser journeys + axe-core WCAG a11y checks on every route.
+      - name: Playwright E2E + axe a11y
+        run: pnpm e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

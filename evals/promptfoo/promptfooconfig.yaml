@@ -1,0 +1,63 @@
+# LLM-output testing with promptfoo — asserts the guardrail pipeline's OUTPUT
+# behaviour through the real running API (offline stub LLM, so it's deterministic and
+# CI-safe). Run via `pnpm test:llm`, which boots the offline server on :4344 first.
+#
+# `transformResponse` projects just the fields under test into a flat object (avoiding
+# promptfoo's auto-extraction of the response's own `output` field), so assertions read
+# the guardrail decision, not the generated draft.
+description: Arbiter guardrail output assertions (offline pipeline)
+
+prompts:
+  - '{{requirement}}'
+
+providers:
+  - id: 'http://localhost:4344/v1/workflows/bug-report/run'
+    label: arbiter-bug-report
+    config:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        requirement: '{{prompt}}'
+        context:
+          - title: known-fields
+            content: 'Known fields: coverage_status, member_id, deductible, paid_amount, claim_status, plan_name.'
+      transformResponse: '({ blocked: json.sanitization.blocked, hasOutput: json.output !== null, findings: json.sanitization.findings.length, sanitizedText: json.sanitization.sanitizedText, violations: json.grounding ? json.grounding.violations : null, decision: json.review ? json.review.decision : null, actions: (json.audit || []).map(function (a) { return a.action; }) })'
+
+tests:
+  - description: a normal requirement yields a structured, non-blocked draft that is gated + audited
+    vars:
+      requirement: 'As a member I can verify my Delta Dental eligibility; the response includes coverage_status and member_id.'
+    assert:
+      - type: javascript
+        value: output.blocked === false
+      - type: javascript
+        value: output.hasOutput === true
+      - type: javascript
+        value: typeof output.violations === 'number'
+      - type: javascript
+        value: output.actions.includes('gate.decision')
+
+  - description: a live credential in the input hard-blocks BEFORE the model call
+    vars:
+      requirement: 'Smoke test the portal login with api key sk-ABCDEF0123456789ABCDEF for user a@b.com.'
+    assert:
+      - type: javascript
+        value: output.blocked === true
+      - type: javascript
+        value: output.hasOutput === false
+      - type: javascript
+        value: output.decision === 'rejected'
+      - type: javascript
+        value: "!output.actions.includes('generate')"
+
+  - description: PII in the input never appears anywhere in the response
+    vars:
+      requirement: 'Patient gabriel.newton@example.com, DOB 1984-07-02, phone 415-555-0148 has coverage_status active for member_id.'
+    assert:
+      - type: not-contains
+        value: 'gabriel.newton@example.com'
+      - type: not-contains
+        value: '415-555-0148'
+      - type: javascript
+        value: output.findings > 0

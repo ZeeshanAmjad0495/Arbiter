@@ -14,3 +14,8 @@ garak.*
 *.report.jsonl
 .scratch/
 .venv-ragas/
+# Playwright / promptfoo generated artifacts
+test-results/
+playwright-report/
+blob-report/
+.promptfoo/

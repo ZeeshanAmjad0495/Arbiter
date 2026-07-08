@@ -23,7 +23,10 @@
     "eval:export-ragas": "tsx evals/export-ragas-dataset.ts",
     "ingest": "tsx apps/api/src/cli/ingest.ts",
     "demask:purge": "tsx apps/api/src/cli/demask-purge.ts",
-    "zuub:e2e": "tsx evals/zuub-e2e.ts"
+    "zuub:e2e": "tsx evals/zuub-e2e.ts",
+    "e2e:api": "tsx apps/api/src/e2e-server.ts",
+    "e2e": "playwright test",
+    "test:llm": "tsx evals/promptfoo/run.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",
@@ -35,11 +38,13 @@
     "@arbiter/sanitize": "workspace:*",
     "@arbiter/telemetry": "workspace:*",
     "@arbiter/workflows": "workspace:*",
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.49.0",
     "@types/node": "^22.10.2",
+    "promptfoo": "^0.121.18",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "zod": "^3.25.0",
-    "@playwright/test": "^1.49.0"
+    "zod": "^3.25.0"
   }
 }
