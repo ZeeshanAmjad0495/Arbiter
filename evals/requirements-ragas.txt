@@ -1,0 +1,17 @@
+# Ragas runs in its OWN venv (its pinned langchain 0.2.x stack conflicts with
+# garak/pyrit's newer langchain, so keep them separate):
+#
+#   python3.12 -m venv .venv-ragas
+#   . .venv-ragas/bin/activate
+#   pip install -r evals/requirements-ragas.txt
+#   python evals/ragas_eval.py
+#
+# The pin that matters: ragas imports langchain_community.chat_models.vertexai,
+# which was REMOVED in langchain-community 0.3+. Pinning the whole langchain stack
+# to 0.2.x (which still ships that module) makes ragas import cleanly.
+ragas==0.2.15
+langchain==0.2.17
+langchain-community==0.2.19
+langchain-core==0.2.43
+langchain-openai==0.1.25
+datasets>=3,<4

@@ -13,3 +13,4 @@ backups/
 garak.*
 *.report.jsonl
 .scratch/
+.venv-ragas/
