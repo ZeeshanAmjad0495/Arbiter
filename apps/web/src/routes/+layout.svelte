@@ -60,6 +60,7 @@
       items: [
         { href: '/review', label: 'Review Queue', ico: 'review' },
         { href: '/knowledge', label: 'Knowledge', ico: 'knowledge' },
+        { href: '/graph', label: 'Knowledge Graph', ico: 'graph' },
         { href: '/validate', label: 'Schema Validator', ico: 'validate' },
       ],
     },

@@ -35,6 +35,7 @@
   let autoApprove = $state(true);
   let simulateHallucination = $state(false);
   let useKnowledge = $state(false);
+  let useGraph = $state(false);
 
   let loading = $state(false);
   let error = $state('');
@@ -153,6 +154,7 @@
         autoApprove,
         simulateHallucination,
         useKnowledge,
+        useGraph,
       });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -254,6 +256,9 @@
         <label class="check"><input type="checkbox" bind:checked={autoApprove} /> Auto-approve (demo)</label>
         <label class="check" title="Retrieve relevant chunks from this project's Knowledge into the context (RAG)">
           <input type="checkbox" bind:checked={useKnowledge} /> Use project knowledge
+        </label>
+        <label class="check" title="Add connected entities from the project's Knowledge Graph (GraphRAG)">
+          <input type="checkbox" bind:checked={useGraph} /> Use graph
         </label>
         {#if selected.ui.outputView === 'test_case'}
           <label class="check">

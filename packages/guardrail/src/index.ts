@@ -5,4 +5,5 @@ export * from './pipeline';
 export * from './metrics';
 export * from './writegate';
 export * from './knowledge';
+export * from './graph';
 export { createGuardrailEngine } from './factory';

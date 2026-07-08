@@ -3,6 +3,8 @@ import type {
   ArtifactId,
   ArtifactStatus,
   AuditEvent,
+  GraphEdge,
+  GraphNode,
   KnowledgeChunk,
   KnowledgeDocId,
   KnowledgeDocument,
@@ -88,6 +90,14 @@ export interface KnowledgeRepository {
   listChunks(projectId: ProjectId): Promise<KnowledgeChunk[]>;
 }
 
+/** Per-project knowledge graph (project-scoped). Rebuilt wholesale on build. */
+export interface GraphRepository {
+  /** Atomically replace the project's graph with the given nodes + edges. */
+  replaceGraph(projectId: ProjectId, nodes: GraphNode[], edges: GraphEdge[]): Promise<void>;
+  listNodes(projectId: ProjectId): Promise<GraphNode[]>;
+  listEdges(projectId: ProjectId): Promise<GraphEdge[]>;
+}
+
 /** Per-project saved JSON Schemas (project-scoped; used by the Schema Validator). */
 export interface SchemaRepository {
   add(schema: ProjectSchema): Promise<ProjectSchema>;
@@ -106,6 +116,7 @@ export interface RepositoryBundle {
   readonly reviews: ReviewRepository;
   readonly knowledge: KnowledgeRepository;
   readonly schemas: SchemaRepository;
+  readonly graph: GraphRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).

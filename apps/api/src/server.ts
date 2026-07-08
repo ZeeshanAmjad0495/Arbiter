@@ -25,7 +25,7 @@ import {
   unifiedDiff,
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
-import { type GuardrailEngine, buildChunks, computeQualityMetrics, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
+import { type GuardrailEngine, buildChunks, buildProjectGraph, computeQualityMetrics, retrieveGraphContext, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
@@ -72,6 +72,8 @@ const RunBody = z.object({
   simulateHallucination: z.boolean().default(false),
   /** Pull top-k relevant chunks from the project's knowledge store into context (RAG). */
   useKnowledge: z.boolean().default(false),
+  /** Add graph-aware context (GraphRAG) — connected entities from the project graph. */
+  useGraph: z.boolean().default(false),
 });
 
 const KnowledgeBody = z.object({
@@ -401,6 +403,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       const retrieved = await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4);
       context = [...toKnowledgeContext(retrieved), ...context];
     }
+    if (body.useGraph) {
+      const graphCtx = await retrieveGraphContext(deps.engine.repos, projectId, body.requirement);
+      context = [...graphCtx, ...context];
+    }
 
     const tracer = new InMemoryTracer();
     const outcome = await runWorkflow(
@@ -485,6 +491,25 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
     const ok = await deps.engine.repos.knowledge.deleteDocument(projectId, idCheck.data);
     return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
+  });
+
+  // ----- Per-project knowledge graph (GraphRAG) -----
+  app.get('/v1/graph', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const [nodes, edges] = await Promise.all([deps.engine.repos.graph.listNodes(projectId), deps.engine.repos.graph.listEdges(projectId)]);
+    return {
+      nodes: nodes.map((n) => ({ id: n.id, label: n.label, type: n.type, mentions: n.mentions })),
+      edges: edges.map((e) => ({ source: e.sourceId, target: e.targetId, relation: e.relation, weight: e.weight })),
+    };
+  });
+
+  // Rebuild the graph from the project's current knowledge.
+  app.post('/v1/graph/build', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const result = await buildProjectGraph(deps.engine.repos, projectId);
+    return { built: result };
   });
 
   // ----- Quality metrics (the project's quality trend line) -----

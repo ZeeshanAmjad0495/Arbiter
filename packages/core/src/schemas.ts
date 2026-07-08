@@ -342,6 +342,47 @@ export const KnowledgeChunk = z.object({
 export type KnowledgeChunk = z.infer<typeof KnowledgeChunk>;
 
 /* ------------------------------------------------------------------ *
+ * Per-project knowledge graph (GraphRAG) — nodes + typed edges built   *
+ * from the project's knowledge; graph-aware retrieval expands the       *
+ * neighborhood of query-seeded nodes into the grounding context.       *
+ * ------------------------------------------------------------------ */
+
+export const GraphNodeId = z.string().uuid().brand<'GraphNodeId'>();
+export type GraphNodeId = z.infer<typeof GraphNodeId>;
+export const GraphEdgeId = z.string().uuid().brand<'GraphEdgeId'>();
+export type GraphEdgeId = z.infer<typeof GraphEdgeId>;
+export const newGraphNodeId = (): GraphNodeId => GraphNodeId.parse(randomUUID());
+export const newGraphEdgeId = (): GraphEdgeId => GraphEdgeId.parse(randomUUID());
+
+export const GraphNodeType = z.enum(['field', 'endpoint', 'requirement', 'test', 'control', 'term']);
+export type GraphNodeType = z.infer<typeof GraphNodeType>;
+
+export const GraphNode = z.object({
+  id: GraphNodeId,
+  projectId: ProjectId,
+  /** Canonical label (the entity text, e.g. "member_id", "REQ-101", "/v2/checkout/redeem"). */
+  label: z.string(),
+  type: GraphNodeType,
+  /** How many chunks mention this entity — a salience signal for ranking. */
+  mentions: z.number().int().nonnegative().default(1),
+  createdAt: z.string().datetime(),
+});
+export type GraphNode = z.infer<typeof GraphNode>;
+
+export const GraphEdge = z.object({
+  id: GraphEdgeId,
+  projectId: ProjectId,
+  sourceId: GraphNodeId,
+  targetId: GraphNodeId,
+  /** Relationship label (e.g. "co_occurs", "references", "has_field"). */
+  relation: z.string(),
+  /** Edge strength (e.g. co-occurrence count) — drives expansion ranking. */
+  weight: z.number().nonnegative().default(1),
+  createdAt: z.string().datetime(),
+});
+export type GraphEdge = z.infer<typeof GraphEdge>;
+
+/* ------------------------------------------------------------------ *
  * The end-to-end outcome of one pass through the guardrail pipeline.  *
  * ------------------------------------------------------------------ */
 

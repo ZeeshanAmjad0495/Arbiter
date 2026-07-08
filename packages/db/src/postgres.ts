@@ -4,6 +4,8 @@ import {
   Artifact,
   type ArtifactId,
   AuditEvent,
+  GraphEdge,
+  GraphNode,
   KnowledgeChunk,
   type KnowledgeDocId,
   KnowledgeDocument,
@@ -19,6 +21,7 @@ import type {
   ArtifactRepository,
   AuditRepository,
   KnowledgeRepository,
+  GraphRepository,
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
@@ -406,11 +409,54 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     },
   };
 
+  const graph: GraphRepository = {
+    async replaceGraph(projectId, nodes, edges) {
+      await withProjectTx(pool, projectId, async (client) => {
+        await client.query('DELETE FROM graph_edges WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM graph_nodes WHERE project_id = $1', [projectId]);
+        for (const n of nodes) {
+          await client.query('INSERT INTO graph_nodes (id, project_id, label, type, mentions, created_at) VALUES ($1,$2,$3,$4,$5,$6)', [
+            n.id,
+            n.projectId,
+            n.label,
+            n.type,
+            n.mentions,
+            n.createdAt,
+          ]);
+        }
+        for (const e of edges) {
+          await client.query('INSERT INTO graph_edges (id, project_id, source_id, target_id, relation, weight, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
+            e.id,
+            e.projectId,
+            e.sourceId,
+            e.targetId,
+            e.relation,
+            e.weight,
+            e.createdAt,
+          ]);
+        }
+      });
+    },
+    async listNodes(projectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query('SELECT id, project_id, label, type, mentions, created_at FROM graph_nodes WHERE project_id = $1', [projectId]);
+        return rows.map(rowToGraphNode);
+      });
+    },
+    async listEdges(projectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query('SELECT id, project_id, source_id, target_id, relation, weight, created_at FROM graph_edges WHERE project_id = $1', [projectId]);
+        return rows.map(rowToGraphEdge);
+      });
+    },
+  };
+
   return {
     kind: 'postgres',
     projects,
     users,
     sessions,
+    graph,
     artifacts,
     audit,
     reviews,
@@ -510,6 +556,29 @@ function rowToKnowledgeDoc(row: Record<string, unknown>): KnowledgeDocument {
     sourceType: row.source_type,
     citation: row.citation,
     classification: row.classification,
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToGraphNode(row: Record<string, unknown>): GraphNode {
+  return GraphNode.parse({
+    id: row.id,
+    projectId: row.project_id,
+    label: row.label,
+    type: row.type,
+    mentions: row.mentions,
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToGraphEdge(row: Record<string, unknown>): GraphEdge {
+  return GraphEdge.parse({
+    id: row.id,
+    projectId: row.project_id,
+    sourceId: row.source_id,
+    targetId: row.target_id,
+    relation: row.relation,
+    weight: row.weight,
     createdAt: iso(row.created_at as Date | string),
   });
 }

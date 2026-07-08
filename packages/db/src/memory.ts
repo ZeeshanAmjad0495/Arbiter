@@ -3,6 +3,8 @@ import type {
   ArtifactId,
   ArtifactStatus,
   AuditEvent,
+  GraphEdge,
+  GraphNode,
   KnowledgeChunk,
   KnowledgeDocId,
   KnowledgeDocument,
@@ -20,6 +22,7 @@ import type {
 import type {
   ArtifactRepository,
   AuditRepository,
+  GraphRepository,
   KnowledgeRepository,
   ProjectRepository,
   RepositoryBundle,
@@ -199,11 +202,27 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  let graphNodes: GraphNode[] = [];
+  let graphEdges: GraphEdge[] = [];
+  const graphRepo: GraphRepository = {
+    async replaceGraph(projectId: ProjectId, nodes: GraphNode[], edges: GraphEdge[]) {
+      graphNodes = graphNodes.filter((n) => n.projectId !== projectId).concat(nodes);
+      graphEdges = graphEdges.filter((e) => e.projectId !== projectId).concat(edges);
+    },
+    async listNodes(projectId: ProjectId) {
+      return graphNodes.filter((n) => n.projectId === projectId);
+    },
+    async listEdges(projectId: ProjectId) {
+      return graphEdges.filter((e) => e.projectId === projectId);
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
     users: userRepo,
     sessions: sessionRepo,
+    graph: graphRepo,
     artifacts: artifactRepo,
     audit: auditRepo,
     reviews: reviewRepo,

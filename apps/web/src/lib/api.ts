@@ -291,6 +291,39 @@ export interface RunRequest {
   autoApprove: boolean;
   simulateHallucination: boolean;
   useKnowledge?: boolean;
+  useGraph?: boolean;
+}
+
+export interface GraphNodeDto {
+  id: string;
+  label: string;
+  type: string;
+  mentions: number;
+}
+export interface GraphEdgeDto {
+  source: string;
+  target: string;
+  relation: string;
+  weight: number;
+}
+export interface GraphData {
+  nodes: GraphNodeDto[];
+  edges: GraphEdgeDto[];
+}
+
+export async function getGraph(): Promise<GraphData> {
+  const res = await apiFetch('/v1/graph');
+  if (!res.ok) throw new Error(`graph ${res.status}`);
+  return res.json();
+}
+
+export async function buildGraph(): Promise<{ nodes: number; edges: number }> {
+  const res = await apiFetch('/v1/graph/build', { method: 'POST' });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Build graph failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()).built;
 }
 
 export interface KnowledgeDoc {
