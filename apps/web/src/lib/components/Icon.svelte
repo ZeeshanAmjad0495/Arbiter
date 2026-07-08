@@ -25,6 +25,7 @@
     Circle,
     Play,
     KeyRound,
+    Users,
   } from '@lucide/svelte';
 
   interface Props {
@@ -61,6 +62,7 @@
     search: Search,
     runner: Play,
     demask: KeyRound,
+    admin: Users,
     dot: Circle,
   };
 

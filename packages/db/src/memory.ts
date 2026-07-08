@@ -27,6 +27,7 @@ import type {
   DemaskRepository,
   ExecutionRepository,
   GraphRepository,
+  MembershipRepository,
   KnowledgeRepository,
   ProjectRepository,
   RepositoryBundle,
@@ -74,6 +75,9 @@ export function createMemoryRepositories(): RepositoryBundle {
         if (user.email === email) return user;
       }
       return null;
+    },
+    async list() {
+      return [...users.values()];
     },
   };
 
@@ -293,11 +297,32 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  const memberships = new Set<string>(); // `${projectId}::${userId}`
+  const mkey = (p: string, u: string) => `${p}::${u}`;
+  const memberRepo: MembershipRepository = {
+    async grant(projectId, userId) {
+      memberships.add(mkey(projectId, userId));
+    },
+    async revoke(projectId, userId) {
+      memberships.delete(mkey(projectId, userId));
+    },
+    async isMember(projectId, userId) {
+      return memberships.has(mkey(projectId, userId));
+    },
+    async projectsForUser(userId) {
+      return [...memberships].filter((k) => k.endsWith(`::${userId}`)).map((k) => k.split('::')[0] as ProjectId);
+    },
+    async usersForProject(projectId) {
+      return [...memberships].filter((k) => k.startsWith(`${projectId}::`)).map((k) => k.split('::')[1] as UserId);
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
     users: userRepo,
     sessions: sessionRepo,
+    members: memberRepo,
     graph: graphRepo,
     artifacts: artifactRepo,
     audit: auditRepo,

@@ -16,6 +16,7 @@ import {
   Session,
   TestExecution,
   User,
+  type UserId,
   type WorkflowRunId,
 } from '@arbiter/core';
 import type {
@@ -25,6 +26,7 @@ import type {
   ExecutionRepository,
   KnowledgeRepository,
   GraphRepository,
+  MembershipRepository,
   ProjectRepository,
   RepositoryBundle,
   ReviewRepository,
@@ -165,6 +167,31 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     async getByEmail(email) {
       const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users WHERE email = $1', [email]);
       return rows[0] ? rowToUser(rows[0]) : null;
+    },
+    async list() {
+      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users ORDER BY created_at');
+      return rows.map(rowToUser);
+    },
+  };
+
+  const members: MembershipRepository = {
+    async grant(projectId, userId) {
+      await pool.query('INSERT INTO project_members (project_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [projectId, userId]);
+    },
+    async revoke(projectId, userId) {
+      await pool.query('DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+    },
+    async isMember(projectId, userId) {
+      const { rows } = await pool.query('SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+      return rows.length > 0;
+    },
+    async projectsForUser(userId) {
+      const { rows } = await pool.query('SELECT project_id FROM project_members WHERE user_id = $1', [userId]);
+      return rows.map((r) => r.project_id as ProjectId);
+    },
+    async usersForProject(projectId) {
+      const { rows } = await pool.query('SELECT user_id FROM project_members WHERE project_id = $1', [projectId]);
+      return rows.map((r) => r.user_id as UserId);
     },
   };
 
@@ -568,6 +595,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     schemas,
     demask,
     executions,
+    members,
     async applyReviewDecision(write) {
       return withProjectTx(pool, write.projectId, async (client) => {
         const { rows } =

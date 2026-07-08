@@ -28,7 +28,7 @@ import {
   toPublicUser,
   unifiedDiff,
 } from '@arbiter/core';
-import type { UserId } from '@arbiter/core';
+import { UserId } from '@arbiter/core';
 import {
   type GuardrailEngine,
   buildChunks,
@@ -241,8 +241,21 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       reply.status(404).send({ error: 'unknown_project' });
       return null;
     }
+    if (!(await canAccessProject(request, parsed.data))) {
+      reply.status(403).send({ error: 'project_forbidden', message: 'You do not have access to this project. Ask an admin to grant it.' });
+      return null;
+    }
     return parsed.data;
   }
+
+  // Admins reach every project; the default project is open; everyone else needs a
+  // membership grant. When auth is disabled (dev), everything is open.
+  async function canAccessProject(request: FastifyRequest, projectId: ProjectId): Promise<boolean> {
+    if (!deps.auth || (request as WithAuth).authRole === 'admin' || projectId === deps.defaultProjectId) return true;
+    const uid = (request as WithAuth).authUserId;
+    return uid ? deps.engine.repos.members.isMember(projectId, uid) : false;
+  }
+  const isAdmin = (request: FastifyRequest): boolean => (request as WithAuth).authRole === 'admin';
 
   app.get('/health', async () => ({ status: 'ok', modes }));
   app.get('/api/status', async () => ({
@@ -286,9 +299,52 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { user, key };
   });
 
+  // ----- Admin: users, roles, and per-project access (admin-only) -----
+  app.get('/v1/admin/users', async (request, reply) => {
+    if (!isAdmin(request)) return reply.status(403).send({ error: 'forbidden' });
+    const users = await deps.engine.repos.users.list();
+    const rows = await Promise.all(
+      users.map(async (u) => ({ id: u.id, email: u.email, role: u.role, hasKey: Boolean(u.accessKeyHash), projectIds: await deps.engine.repos.members.projectsForUser(u.id) })),
+    );
+    return { users: rows };
+  });
+
+  app.post<{ Params: { id: string } }>('/v1/admin/users/:id/role', async (request, reply) => {
+    if (!isAdmin(request)) return reply.status(403).send({ error: 'forbidden' });
+    const uid = UserId.safeParse(request.params.id);
+    const parsed = z.object({ role: z.enum(['qa', 'qa_lead', 'admin']) }).safeParse(request.body ?? {});
+    if (!uid.success || !parsed.success) return reply.status(400).send({ error: 'invalid' });
+    const user = await deps.engine.repos.users.get(uid.data);
+    if (!user) return reply.status(404).send({ error: 'not_found' });
+    await deps.engine.repos.users.upsert({ ...user, role: parsed.data.role });
+    return { ok: true };
+  });
+
+  // Set a user's project access to exactly the given list (grants/revokes the diff).
+  app.put<{ Params: { id: string } }>('/v1/admin/users/:id/projects', async (request, reply) => {
+    if (!isAdmin(request)) return reply.status(403).send({ error: 'forbidden' });
+    const uid = UserId.safeParse(request.params.id);
+    const parsed = z.object({ projectIds: z.array(ProjectId).max(500) }).safeParse(request.body ?? {});
+    if (!uid.success || !parsed.success) return reply.status(400).send({ error: 'invalid' });
+    if (!(await deps.engine.repos.users.get(uid.data))) return reply.status(404).send({ error: 'not_found' });
+    const want = new Set<string>(parsed.data.projectIds);
+    const have = new Set<string>(await deps.engine.repos.members.projectsForUser(uid.data));
+    await Promise.all([
+      ...parsed.data.projectIds.filter((p) => !have.has(p)).map((p) => deps.engine.repos.members.grant(p, uid.data)),
+      ...[...have].filter((p) => !want.has(p)).map((p) => deps.engine.repos.members.revoke(ProjectId.parse(p), uid.data)),
+    ]);
+    return { ok: true };
+  });
+
   // ----- Projects (multi-tenant surface) -----
-  app.get('/v1/projects', async () => {
-    const projects = await deps.engine.repos.projects.list();
+  app.get('/v1/projects', async (request) => {
+    let projects = await deps.engine.repos.projects.list();
+    const uid = (request as WithAuth).authUserId;
+    // Non-admins see only the default project + the ones they've been granted.
+    if (!isAdmin(request) && uid) {
+      const allowed = new Set<string>([deps.defaultProjectId, ...(await deps.engine.repos.members.projectsForUser(uid))]);
+      projects = projects.filter((p) => allowed.has(p.id));
+    }
     return {
       defaultProjectId: deps.defaultProjectId,
       projects: projects.map((p) => ({ id: p.id, name: p.name, classification: p.classification, createdAt: p.createdAt })),
@@ -320,6 +376,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       createdAt: nowIso(),
     });
     await deps.engine.repos.projects.upsert(project);
+    // The creator gets access to their new project (admins already reach everything).
+    await deps.engine.repos.members.grant(project.id, actorFor(request));
 
     // Seed the project's OWN context into knowledge (sanitized — never a PHI sink).
     if (context && context.trim()) {

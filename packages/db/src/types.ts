@@ -32,6 +32,20 @@ export interface UserRepository {
   upsert(user: User): Promise<User>;
   get(id: UserId): Promise<User | null>;
   getByEmail(email: string): Promise<User | null>;
+  /** All users — for the admin panel. */
+  list(): Promise<User[]>;
+}
+
+/**
+ * Per-user project access (admin-managed). Non-admins may only reach projects they
+ * are a member of; admins bypass this. Access-control infra — not project-scoped.
+ */
+export interface MembershipRepository {
+  grant(projectId: ProjectId, userId: UserId): Promise<void>;
+  revoke(projectId: ProjectId, userId: UserId): Promise<void>;
+  isMember(projectId: ProjectId, userId: UserId): Promise<boolean>;
+  projectsForUser(userId: UserId): Promise<ProjectId[]>;
+  usersForProject(projectId: ProjectId): Promise<UserId[]>;
 }
 
 export interface SessionRepository {
@@ -153,6 +167,7 @@ export interface RepositoryBundle {
   readonly graph: GraphRepository;
   readonly demask: DemaskRepository;
   readonly executions: ExecutionRepository;
+  readonly members: MembershipRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).

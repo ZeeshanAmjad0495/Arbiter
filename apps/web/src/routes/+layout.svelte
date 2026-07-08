@@ -71,6 +71,7 @@
       items: [
         { href: '/insights', label: 'Insights', ico: 'insights' },
         { href: '/prompts', label: 'Template Library', ico: 'prompts' },
+        { href: '/admin', label: 'Users & Access', ico: 'admin', admin: true },
         { href: '/demask', label: 'Unmask Data', ico: 'demask', admin: true },
       ],
     },

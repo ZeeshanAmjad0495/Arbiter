@@ -95,6 +95,32 @@ export async function issueKey(email: string, role = 'qa'): Promise<{ user: Auth
   return res.json();
 }
 
+/* ----- Admin: users, roles, project access ----- */
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: string;
+  hasKey: boolean;
+  projectIds: string[];
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  const res = await apiFetch('/v1/admin/users');
+  if (!res.ok) throw new Error(`admin users ${res.status}`);
+  return (await res.json()).users;
+}
+
+export async function setUserRole(id: string, role: string): Promise<void> {
+  const res = await apiFetch(`/v1/admin/users/${id}/role`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role }) });
+  if (!res.ok) throw new Error(`set role ${res.status}`);
+}
+
+export async function setUserProjects(id: string, projectIds: string[]): Promise<void> {
+  const res = await apiFetch(`/v1/admin/users/${id}/projects`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectIds }) });
+  if (!res.ok) throw new Error(`set projects ${res.status}`);
+}
+
 export interface ProjectInfo {
   id: string;
   name: string;
