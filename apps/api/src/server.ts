@@ -453,6 +453,73 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
   });
 
+  // Streaming run (SSE): emits stage progress + reasoning deltas, then the outcome.
+  app.post<{ Params: { id: string } }>('/v1/workflows/:id/run/stream', async (request, reply) => {
+    const def = getWorkflow(request.params.id);
+    if (!def) return reply.status(404).send({ error: 'unknown_workflow', id: request.params.id });
+    const parsed = RunBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const body = parsed.data;
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+
+    let context = body.context;
+    if (body.useKnowledge) {
+      context = [...toKnowledgeContext(await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4)), ...context];
+    }
+    if (body.useGraph) {
+      context = [...(await retrieveGraphContext(deps.engine.repos, projectId, body.requirement)), ...context];
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+    const send = (event: string, data: unknown) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('open', { workflow: def.id, outputView: def.ui.outputView });
+
+    const tracer = new InMemoryTracer();
+    try {
+      const outcome = await runWorkflow(
+        deps.engine,
+        def,
+        {
+          projectId,
+          actorId: actorFor(request),
+          requirement: body.requirement,
+          context,
+          ...(body.riskTier ? { riskTier: body.riskTier } : {}),
+          autoApprove: body.autoApprove,
+          simulateHallucination: body.simulateHallucination,
+        },
+        { tracer, onProgress: (stage) => send('stage', { stage }), onReasoning: (delta) => send('reasoning', { delta }) },
+      );
+      const root = tracer.roots[0];
+      if (otlpExporter) void otlpExporter.export(tracer.roots);
+      send('done', {
+        workflow: def.id,
+        outputView: def.ui.outputView,
+        runId: outcome.runId,
+        model: outcome.model,
+        sanitization: {
+          engine: outcome.sanitization.engine,
+          blocked: outcome.sanitization.blocked,
+          blockReasons: outcome.sanitization.blockReasons,
+          sanitizedText: outcome.sanitization.sanitizedText,
+          findings: outcome.sanitization.findings,
+        },
+        contextPack: outcome.contextPack.items.map((i) => ({ id: i.id, title: i.title, citation: i.citation, classification: i.classification, syncedAt: i.syncedAt ?? null })),
+        output: outcome.output,
+        grounding: outcome.grounding,
+        review: outcome.review,
+        audit: outcome.audit.map((a) => ({ action: a.action, at: a.createdAt, detail: a.detail })),
+        trace: root ? { text: renderTrace(root), tree: root } : null,
+      });
+    } catch (e) {
+      send('error', { message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      reply.raw.end();
+    }
+  });
+
   // ----- Per-project knowledge store (RAG ground source) -----
   app.get('/v1/knowledge', async (request, reply) => {
     const projectId = await resolveProject(request, reply);

@@ -2662,11 +2662,17 @@ export function listWorkflowsMeta() {
   }));
 }
 
+export interface RunOpts {
+  tracer?: Tracer;
+  onProgress?: (stage: 'sanitize' | 'ground' | 'generate' | 'validate' | 'gate') => void;
+  onReasoning?: (delta: string) => void;
+}
+
 export function runWorkflow(
   engine: GuardrailEngine,
   def: WorkflowDef<unknown>,
   input: WorkflowInput,
-  runOpts: { tracer?: Tracer } = {},
+  runOpts: RunOpts = {},
 ): Promise<GuardrailOutcome<unknown>> {
   const contextText = input.context.map((c) => c.content).join('\n');
   return engine.run<unknown>(
@@ -2702,8 +2708,10 @@ export function runWorkflow(
       ...(def.extractClaims ? { extractClaims: def.extractClaims } : {}),
       ...(def.rescanOutput ? { rescanOutput: true } : {}),
       ...(input.autoApprove !== undefined ? { autoApprove: input.autoApprove } : {}),
+      ...(runOpts.onProgress ? { onProgress: runOpts.onProgress } : {}),
+      ...(runOpts.onReasoning ? { onReasoning: runOpts.onReasoning } : {}),
       stub: () => def.stub(contextText, { simulateHallucination: input.simulateHallucination ?? false }),
     },
-    runOpts,
+    { ...(runOpts.tracer ? { tracer: runOpts.tracer } : {}) },
   );
 }

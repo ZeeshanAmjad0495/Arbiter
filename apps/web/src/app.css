@@ -909,6 +909,52 @@ details summary {
   font-size: 11px;
   color: var(--muted);
 }
+.stream-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.stream-stages {
+  list-style: none;
+  display: flex;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  flex-wrap: wrap;
+}
+.stream-stages li {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  text-transform: capitalize;
+}
+.stream-stages li.active {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.stream-stages li.done {
+  color: var(--good);
+  border-color: var(--good);
+  background: var(--good-soft);
+}
+.stream-current {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reasoning {
+  max-height: 280px;
+  overflow-y: auto;
+  color: var(--muted);
+  line-height: 1.55;
+}
 .spinner {
   display: inline-block;
   width: 14px;

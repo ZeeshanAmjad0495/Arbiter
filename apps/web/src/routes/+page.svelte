@@ -4,7 +4,7 @@
   import {
     fetchJira,
     listWorkflows,
-    runWorkflow,
+    runWorkflowStream,
     type ContextInput,
     type Outcome,
     type TestCase,
@@ -40,6 +40,17 @@
   let loading = $state(false);
   let error = $state('');
   let outcome = $state<Outcome | null>(null);
+  let streamStage = $state('');
+  let reasoning = $state('');
+
+  const STAGE_LABEL: Record<string, string> = {
+    sanitize: 'Sanitizing input',
+    ground: 'Grounding context',
+    generate: 'Generating (model thinking…)',
+    validate: 'Validating grounding',
+    gate: 'Applying review gate',
+  };
+  const STAGES = ['sanitize', 'ground', 'generate', 'validate', 'gate'];
 
   // The active category comes from ?cat (the sidebar sub-items). Search is global.
   const currentCat = $derived($page.url.searchParams.get('cat') ?? 'author');
@@ -146,20 +157,33 @@
   async function run() {
     loading = true;
     error = '';
+    outcome = null;
+    reasoning = '';
+    streamStage = '';
     try {
-      outcome = await runWorkflow(selectedId, {
-        requirement,
-        context: contexts.filter((c) => c.content.trim().length > 0),
-        riskTier,
-        autoApprove,
-        simulateHallucination,
-        useKnowledge,
-        useGraph,
-      });
+      await runWorkflowStream(
+        selectedId,
+        {
+          requirement,
+          context: contexts.filter((c) => c.content.trim().length > 0),
+          riskTier,
+          autoApprove,
+          simulateHallucination,
+          useKnowledge,
+          useGraph,
+        },
+        (e) => {
+          if (e.type === 'stage') streamStage = e.stage;
+          else if (e.type === 'reasoning') reasoning += e.delta;
+          else if (e.type === 'done') outcome = e.outcome;
+          else if (e.type === 'error') error = e.message;
+        },
+      );
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       loading = false;
+      streamStage = '';
     }
   }
 </script>
@@ -296,6 +320,19 @@
         <ReviewGate review={outcome.review} />
         <AuditTrail audit={outcome.audit} />
         <Trace trace={outcome.trace} />
+      {:else if loading}
+        <div class="panel stream-panel">
+          <ol class="stream-stages">
+            {#each STAGES as s, i}
+              {@const idx = STAGES.indexOf(streamStage)}
+              <li class:done={idx > i} class:active={idx === i}>{STAGE_LABEL[s]?.split(' ')[0] ?? s}</li>
+            {/each}
+          </ol>
+          <div class="stream-current"><span class="spinner" aria-hidden="true"></span> {STAGE_LABEL[streamStage] ?? 'Starting…'}</div>
+          {#if reasoning}
+            <div class="reasoning mono" aria-label="Model reasoning">{reasoning}</div>
+          {/if}
+        </div>
       {:else}
         <div class="empty">
           <p>Fill in the input and run to see the guardrail pipeline in action.</p>

@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ArbiterConfig } from '@arbiter/config';
 import { ProviderError } from '@arbiter/core';
-import type { GenerateRequest, GenerateResult, LlmProvider, ModelTier } from './types';
+import type { GenerateRequest, GenerateResult, LlmProvider, ModelTier, StreamEvent } from './types';
 
 interface KimiMessage {
   role: 'system' | 'user' | 'assistant';
@@ -90,6 +90,78 @@ export class KimiLlmProvider implements LlmProvider {
     throw new ProviderError('Kimi output failed schema validation after retry', {
       context: { model: this.cfg.model, lastError },
     });
+  }
+
+  /** Token streaming — emits Kimi's `reasoning_content` (the slow thinking) + content deltas. */
+  async generateStream<T>(req: GenerateRequest<T>, onEvent: (e: StreamEvent) => void): Promise<GenerateResult<T>> {
+    const jsonSchema = zodToJsonSchema(req.schema as unknown as z.ZodTypeAny);
+    const system = [
+      req.system,
+      '',
+      'Respond with a SINGLE JSON object that strictly conforms to this JSON Schema.',
+      'Do not wrap it in markdown fences and do not add prose outside the JSON.',
+      'JSON Schema:',
+      JSON.stringify(jsonSchema),
+    ].join('\n');
+    const messages: KimiMessage[] = [
+      { role: 'system', content: system },
+      { role: 'user', content: req.prompt },
+    ];
+
+    const url = `${this.cfg.baseUrl.replace(/\/$/, '')}/chat/completions`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify({ model: this.cfg.model, messages, thinking: { type: this.cfg.thinking }, temperature: 1, max_tokens: req.maxTokens ?? 8192, stream: true }),
+      });
+    } catch (error) {
+      throw new ProviderError('Kimi stream request failed (network)', { cause: error, isTransient: true });
+    }
+    if (!res.ok || !res.body) {
+      throw new ProviderError(`Kimi API error ${res.status}`, { context: { body: (await res.text().catch(() => '')).slice(0, 300) } });
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    const handle = (line: string): void => {
+      if (!line.startsWith('data:')) return;
+      const payload = line.slice(5).trim();
+      if (payload === '' || payload === '[DONE]') return;
+      let json: { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> };
+      try {
+        json = JSON.parse(payload);
+      } catch {
+        return;
+      }
+      const delta = json.choices?.[0]?.delta ?? {};
+      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) onEvent({ type: 'reasoning', delta: delta.reasoning_content });
+      if (typeof delta.content === 'string' && delta.content) {
+        content += delta.content;
+        onEvent({ type: 'text', delta: delta.content });
+      }
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        handle(buffer.slice(0, nl).trim());
+        buffer = buffer.slice(nl + 1);
+      }
+    }
+    if (buffer.trim().length > 0) handle(buffer.trim());
+
+    const parsed = extractJson(content);
+    const result = parsed === undefined ? ({ success: false } as const) : req.schema.safeParse(parsed);
+    if (!result.success) {
+      throw new ProviderError('Kimi streamed output failed schema validation', { context: { model: this.cfg.model } });
+    }
+    return { output: result.data, model: this.cfg.model, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 } };
   }
 
   private async call(messages: KimiMessage[], maxTokens: number): Promise<KimiResponse> {

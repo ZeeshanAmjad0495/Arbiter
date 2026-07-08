@@ -389,6 +389,60 @@ export async function runWorkflow(id: string, body: RunRequest): Promise<Outcome
   return res.json();
 }
 
+export type RunStreamEvent =
+  | { type: 'open'; workflow: string; outputView: string }
+  | { type: 'stage'; stage: string }
+  | { type: 'reasoning'; delta: string }
+  | { type: 'done'; outcome: Outcome }
+  | { type: 'error'; message: string };
+
+/** Run a workflow with Server-Sent Events: stage progress + reasoning deltas, then the outcome. */
+export async function runWorkflowStream(id: string, body: RunRequest, onEvent: (e: RunStreamEvent) => void): Promise<void> {
+  const res = await apiFetch(`/v1/workflows/${id}/run/stream`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Request failed (${res.status}): ${detail}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const dispatch = (block: string) => {
+    let ev = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) ev = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (ev === 'stage') onEvent({ type: 'stage', stage: String(parsed.stage) });
+    else if (ev === 'reasoning') onEvent({ type: 'reasoning', delta: String(parsed.delta) });
+    else if (ev === 'done') onEvent({ type: 'done', outcome: parsed as unknown as Outcome });
+    else if (ev === 'error') onEvent({ type: 'error', message: String(parsed.message) });
+    else if (ev === 'open') onEvent({ type: 'open', workflow: String(parsed.workflow), outputView: String(parsed.outputView) });
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      dispatch(buffer.slice(0, idx));
+      buffer = buffer.slice(idx + 2);
+    }
+  }
+  if (buffer.trim()) dispatch(buffer);
+}
+
 export async function fetchJira(key: string): Promise<ContextInput> {
   const res = await apiFetch(`/v1/jira/${encodeURIComponent(key)}`);
   const data = await res.json().catch(() => ({}));

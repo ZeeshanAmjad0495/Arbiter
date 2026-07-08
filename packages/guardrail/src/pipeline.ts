@@ -22,7 +22,7 @@ import {
   systemClock,
 } from '@arbiter/core';
 import type { RepositoryBundle } from '@arbiter/db';
-import type { LlmProvider, ModelTier } from '@arbiter/llm';
+import { type LlmProvider, type ModelTier, streamGenerate } from '@arbiter/llm';
 import type { SanitizePort } from '@arbiter/sanitize';
 import { ArbiterAttr, GenAI, type Tracer, withSpan } from '@arbiter/telemetry';
 import { buildContextPack } from './context';
@@ -54,6 +54,10 @@ export interface GuardrailRequest<T> {
   /** Opt-in: re-scan the generated artifact for PII; any finding blocks export
    *  (for generators whose output must itself be PII-safe, e.g. synthetic data). */
   readonly rescanOutput?: boolean;
+  /** Streaming: called as each pipeline stage begins (for live progress). */
+  readonly onProgress?: (stage: 'sanitize' | 'ground' | 'generate' | 'validate' | 'gate') => void;
+  /** Streaming: called with reasoning/text deltas during generation (if the provider streams). */
+  readonly onReasoning?: (delta: string) => void;
 }
 
 export interface GuardrailDeps {
@@ -160,6 +164,7 @@ export class GuardrailEngine {
       await appendAudit('workflow.run', { workflow: req.workflow, riskTier: req.riskTier });
 
       // 1. Sanitize.
+      req.onProgress?.('sanitize');
       const sanitization = await withSpan(root, 'sanitize', { [ArbiterAttr.STAGE]: 'sanitize' }, async (span) => {
         const report = await this.deps.sanitizer.sanitize(req.rawInput);
         span.setAttribute(ArbiterAttr.SANITIZE_FINDINGS, report.findings.length);
@@ -203,6 +208,7 @@ export class GuardrailEngine {
       // 2. Ground. Retrieved/grounding content is sanitized too — raw PHI in a
       // synced ticket or an uploaded doc must not reach the model via the context
       // pack (field names, being non-PII, survive so grounding still validates).
+      req.onProgress?.('ground');
       const pack = await withSpan(root, 'ground', { [ArbiterAttr.STAGE]: 'ground' }, async (span) => {
         const built = await req.buildContextPack(sanitization.sanitizedText);
         const items = await Promise.all(
@@ -218,6 +224,7 @@ export class GuardrailEngine {
       await appendAudit('ground', { items: pack.items.length }, { sources: pack.items.map((i) => i.citation) });
 
       // 3. Generate (structured).
+      req.onProgress?.('generate');
       const prompt = req.buildPrompt(sanitization.sanitizedText, pack);
       const generation = await withSpan(
         root,
@@ -229,14 +236,19 @@ export class GuardrailEngine {
           [GenAI.REQUEST_MODEL]: model,
         },
         async (span) => {
-          const result = await this.deps.llm.generate({
+          const genReq = {
             system: req.system,
             prompt,
             schema: req.schema,
             ...(req.tier ? { tier: req.tier } : {}),
             ...(req.maxTokens ? { maxTokens: req.maxTokens } : {}),
             ...(req.stub ? { stub: req.stub } : {}),
-          });
+          };
+          // Stream deltas when a consumer wants them (provider streams if it can,
+          // else falls back to a single generate) — same validated result either way.
+          const result = req.onReasoning
+            ? await streamGenerate(this.deps.llm, genReq, (e) => req.onReasoning?.(e.delta))
+            : await this.deps.llm.generate(genReq);
           span.setAttribute(GenAI.RESPONSE_MODEL, result.model);
           span.setAttribute(GenAI.USAGE_INPUT_TOKENS, result.usage.inputTokens);
           span.setAttribute(GenAI.USAGE_OUTPUT_TOKENS, result.usage.outputTokens);
@@ -250,6 +262,7 @@ export class GuardrailEngine {
       );
 
       // 4. Validate (grounding).
+      req.onProgress?.('validate');
       const claims = req.extractClaims ? req.extractClaims(generation.output) : [];
       const grounding = await withSpan(root, 'validate', { [ArbiterAttr.STAGE]: 'validate' }, async (span) => {
         const report = this.deps.grounding.validate(claims, pack, { blockOnViolation: req.blockOnUngrounded ?? true });
@@ -283,6 +296,7 @@ export class GuardrailEngine {
       }
 
       // 5. Gate (review).
+      req.onProgress?.('gate');
       const review = await withSpan(root, 'gate', { [ArbiterAttr.STAGE]: 'gate' }, async (span) => {
         const decision = this.deps.review.decide({
           riskTier: req.riskTier,
