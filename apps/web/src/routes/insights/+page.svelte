@@ -21,7 +21,7 @@
   onMount(load);
 </script>
 
-<main class="wrap">
+<section class="wrap">
   <div class="head">
     <div>
       <h2>Quality Insights</h2>
@@ -83,7 +83,7 @@
 
     <p class="ts">Generated {new Date(metrics.generatedAt).toLocaleString()}</p>
   {/if}
-</main>
+</section>
 
 <style>
   .wrap {

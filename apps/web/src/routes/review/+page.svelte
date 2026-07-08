@@ -80,7 +80,7 @@
   onMount(loadList);
 </script>
 
-<main class="layout">
+<section class="layout">
   <section class="panel input-panel">
     <h2>Review Queue <span class="tag muted">{items.length}</span></h2>
     <p class="hint">
@@ -153,7 +153,7 @@
       <div class="empty"><p>Select an artifact from the queue to review it.</p></div>
     {/if}
   </section>
-</main>
+</section>
 
 <style>
   .queue-item {

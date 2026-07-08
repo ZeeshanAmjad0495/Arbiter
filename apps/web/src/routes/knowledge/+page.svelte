@@ -46,7 +46,7 @@
   onMount(load);
 </script>
 
-<main class="wrap">
+<section class="wrap">
   <div class="head">
     <h2>Project Knowledge</h2>
     <p class="sub">Per-project ground source. Documents are sanitized, chunked, and retrieved into a run's context when "Use project knowledge" is on — so generation is project-aware without re-pasting.</p>
@@ -80,7 +80,7 @@
       </ul>
     {/if}
   </section>
-</main>
+</section>
 
 <style>
   .wrap {

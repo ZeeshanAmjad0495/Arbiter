@@ -14,7 +14,7 @@
   });
 </script>
 
-<main class="prompts-wrap">
+<section class="prompts-wrap">
   <div class="panel" style="margin-bottom:16px">
     <h2>Prompt Library</h2>
     <p class="hint">
@@ -38,7 +38,7 @@
       <div class="comp"><h4>Output format</h4><div>{p.components.outputFormat}</div></div>
     </article>
   {/each}
-</main>
+</section>
 
 <style>
   .prompts-wrap {

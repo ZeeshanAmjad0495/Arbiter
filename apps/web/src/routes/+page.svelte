@@ -9,6 +9,7 @@
     type TestCase,
     type WorkflowMeta,
   } from '$lib/api';
+  import { CATEGORIES, categoryOf, iconOf } from '$lib/catalog';
   import Pipeline from '$lib/components/Pipeline.svelte';
   import Sanitization from '$lib/components/Sanitization.svelte';
   import ContextPack from '$lib/components/ContextPack.svelte';
@@ -23,6 +24,7 @@
 
   let workflows = $state<WorkflowMeta[]>([]);
   let selectedId = $state('');
+  let search = $state('');
   const selected = $derived(workflows.find((w) => w.id === selectedId));
 
   let requirement = $state('');
@@ -36,6 +38,17 @@
   let error = $state('');
   let outcome = $state<Outcome | null>(null);
 
+  const q = $derived(search.trim().toLowerCase());
+  function matches(w: WorkflowMeta): boolean {
+    return !q || w.label.toLowerCase().includes(q) || w.description.toLowerCase().includes(q);
+  }
+  const groups = $derived(
+    CATEGORIES.map((c) => ({
+      ...c,
+      items: workflows.filter((w) => categoryOf(w.id) === c.key && matches(w)),
+    })).filter((g) => g.items.length > 0),
+  );
+
   function applyWorkflow(meta: WorkflowMeta) {
     requirement = meta.ui.sampleRequirement;
     contexts = meta.ui.sampleContext
@@ -47,20 +60,21 @@
     error = '';
   }
 
-  function selectWorkflow(id: string) {
+  function openWorkflow(id: string) {
     selectedId = id;
     const meta = workflows.find((w) => w.id === id);
     if (meta) applyWorkflow(meta);
+    window.scrollTo({ top: 0 });
+  }
+  function backToCatalog() {
+    selectedId = '';
+    outcome = null;
+    error = '';
   }
 
   onMount(async () => {
     try {
       workflows = await listWorkflows();
-      const initial = workflows.find((w) => w.id === 'test-case') ?? workflows[0];
-      if (initial) {
-        selectedId = initial.id;
-        applyWorkflow(initial);
-      }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -125,20 +139,55 @@
   }
 </script>
 
-<nav class="wf-tabs">
-  {#each workflows as w}
-    <button type="button" class="wf-tab" class:active={w.id === selectedId} onclick={() => selectWorkflow(w.id)}>
-      {w.label}
-    </button>
-  {/each}
-</nav>
+{#if !selected}
+  <!-- ===== Catalog ===== -->
+  <div class="catalog-head">
+    <div>
+      <h2>Workflows</h2>
+      <p class="sub">{workflows.length} governed QA/QE workflows — each runs the same sanitize → ground → generate → validate → gate pipeline.</p>
+    </div>
+    <div class="search">
+      <span aria-hidden="true" style="opacity:.5">🔍</span>
+      <input type="search" placeholder="Search workflows…" bind:value={search} aria-label="Search workflows" />
+    </div>
+  </div>
 
-<main class="layout">
-  <!-- Input -->
-  <section class="panel input-panel">
-    {#if selected}
-      <h2>{selected.label}</h2>
-      <p class="hint">{selected.description}</p>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if workflows.length === 0 && !error}<div class="empty">Loading workflows…</div>{/if}
+
+  {#each groups as g}
+    <section class="cat-group">
+      <h3>{g.icon} {g.label} <span style="opacity:.5">· {g.items.length}</span></h3>
+      <div class="cat-grid">
+        {#each g.items as w}
+          <button class="wf-card" onclick={() => openWorkflow(w.id)}>
+            <span class="wf-name"><span class="wf-ico" aria-hidden="true">{iconOf(w.id)}</span>{w.label}</span>
+            <span class="wf-desc">{w.description}</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:2px">
+              <span class="risk-dot {w.defaultRiskTier}"></span>{w.defaultRiskTier} risk
+            </span>
+          </button>
+        {/each}
+      </div>
+    </section>
+  {/each}
+{:else}
+  <!-- ===== Run view ===== -->
+  <div class="runview-top">
+    <button class="back-link" onclick={backToCatalog}>← Workflows</button>
+    <div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span aria-hidden="true">{iconOf(selected.id)}</span>
+        <strong style="font-size:16px">{selected.label}</strong>
+        <span class="risk-dot {selected.defaultRiskTier}" title="{selected.defaultRiskTier} risk"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Input -->
+    <section class="panel input-panel">
+      <p class="hint" style="margin-top:0">{selected.description}</p>
 
       <label class="field">
         <span>{selected.ui.requirementLabel}</span>
@@ -192,72 +241,37 @@
         {#if loading}<span class="spinner" aria-hidden="true"></span> Running pipeline…{:else}Run {selected.label}{/if}
       </button>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
-    {:else}
-      <p class="hint">Loading workflows…</p>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
-    {/if}
-  </section>
+    </section>
 
-  <!-- Output -->
-  <section aria-live="polite">
-    {#if outcome}
-      <div class="panel" style="margin-bottom:14px;padding:14px 18px">
-        <Pipeline {outcome} />
-        <div style="font-size:12px;color:var(--muted)">run {outcome.runId}</div>
-      </div>
-      {#if outcome.output}
-        <Export label={selected?.label ?? 'Output'} output={outcome.output} runId={outcome.runId} />
-      {/if}
-      <Sanitization san={outcome.sanitization} />
-      <ContextPack items={outcome.contextPack} />
-      {#if outcome.outputView === 'test_case'}
-        <TestCaseCard output={outcome.output as TestCase} model={outcome.model} />
+    <!-- Output -->
+    <section aria-live="polite">
+      {#if outcome}
+        <div class="panel" style="margin-bottom:14px;padding:14px 18px">
+          <Pipeline {outcome} />
+          <div style="font-size:12px;color:var(--muted)">run {outcome.runId}</div>
+        </div>
+        {#if outcome.output}
+          <Export label={selected?.label ?? 'Output'} output={outcome.output} runId={outcome.runId} />
+        {/if}
+        <Sanitization san={outcome.sanitization} />
+        <ContextPack items={outcome.contextPack} />
+        {#if outcome.outputView === 'test_case'}
+          <TestCaseCard output={outcome.output as TestCase} model={outcome.model} />
+        {:else}
+          <GenericOutput output={outcome.output} model={outcome.model} label={selected?.label ?? 'Output'} />
+        {/if}
+        {#if outcome.grounding.claims.length > 0 || outcome.grounding.blockedExport}
+          <Grounding grounding={outcome.grounding} />
+        {/if}
+        <ReviewGate review={outcome.review} />
+        <AuditTrail audit={outcome.audit} />
+        <Trace trace={outcome.trace} />
       {:else}
-        <GenericOutput output={outcome.output} model={outcome.model} label={selected?.label ?? 'Output'} />
+        <div class="empty">
+          <p>Fill in the input and run to see the guardrail pipeline in action.</p>
+          <p style="font-size:13px">sanitize → ground → generate → validate → gate — with a full audit trail and trace.</p>
+        </div>
       {/if}
-      {#if outcome.grounding.claims.length > 0 || outcome.grounding.blockedExport}
-        <Grounding grounding={outcome.grounding} />
-      {/if}
-      <ReviewGate review={outcome.review} />
-      <AuditTrail audit={outcome.audit} />
-      <Trace trace={outcome.trace} />
-    {:else}
-      <div class="empty">
-        <p>Pick a workflow and run it to see the guardrail pipeline in action.</p>
-        <p style="font-size:13px">
-          The same governed path — sanitize → ground → generate → validate → gate — runs for every workflow, with a
-          full audit trail and trace.
-        </p>
-      </div>
-    {/if}
-  </section>
-</main>
-
-<style>
-  .wf-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 14px 24px 0;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
-  .wf-tab {
-    background: var(--inset);
-    border: 1px solid var(--line);
-    border-radius: 8px 8px 0 0;
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    cursor: pointer;
-  }
-  .wf-tab:hover {
-    color: var(--ink);
-  }
-  .wf-tab.active {
-    background: var(--surface);
-    color: var(--accent-strong);
-    border-bottom-color: var(--surface);
-  }
-</style>
+    </section>
+  </div>
+{/if}
