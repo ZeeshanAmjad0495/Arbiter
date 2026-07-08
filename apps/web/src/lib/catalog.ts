@@ -4,14 +4,14 @@
 export interface CatalogCategory {
   key: string;
   label: string;
-  icon: string;
+  blurb: string;
 }
 
 export const CATEGORIES: CatalogCategory[] = [
-  { key: 'author', label: 'Author & Design', icon: '✏️' },
-  { key: 'analyze', label: 'Analyze & Trace', icon: '🔎' },
-  { key: 'operate', label: 'Operate & Respond', icon: '⚙️' },
-  { key: 'data', label: 'Data & Reporting', icon: '📊' },
+  { key: 'author', label: 'Author & Design', blurb: 'Draft requirements, test cases, strategy, plans, and specs.' },
+  { key: 'analyze', label: 'Analyze & Trace', blurb: 'Traceability, coverage, drift, impact, and consistency checks.' },
+  { key: 'operate', label: 'Operate & Respond', blurb: 'CI triage, incidents, release readiness, and resilience.' },
+  { key: 'data', label: 'Data & Reporting', blurb: 'Synthetic data, DQ assertions, migrations, and reports.' },
 ];
 
 const CATEGORY_OF: Record<string, string> = {
@@ -62,8 +62,4 @@ const CATEGORY_OF: Record<string, string> = {
 
 export function categoryOf(id: string): string {
   return CATEGORY_OF[id] ?? 'author';
-}
-
-export function iconOf(id: string): string {
-  return CATEGORIES.find((c) => c.key === categoryOf(id))?.icon ?? '•';
 }

@@ -12,6 +12,7 @@
     type StatusInfo,
   } from '$lib/api';
   import Modal from '$lib/components/Modal.svelte';
+  import Icon from '$lib/components/Icon.svelte';
 
   let { children } = $props();
   let status = $state<StatusInfo | null>(null);
@@ -29,19 +30,19 @@
     {
       group: 'Workspace',
       items: [
-        { href: '/', label: 'Workbench', ico: '⚗️' },
-        { href: '/review', label: 'Review Queue', ico: '✅' },
+        { href: '/', label: 'Workbench', ico: 'workbench' },
+        { href: '/review', label: 'Review Queue', ico: 'review' },
       ],
     },
     {
       group: 'Project data',
-      items: [{ href: '/knowledge', label: 'Knowledge', ico: '📚' }],
+      items: [{ href: '/knowledge', label: 'Knowledge', ico: 'knowledge' }],
     },
     {
       group: 'Insights',
       items: [
-        { href: '/insights', label: 'Insights', ico: '📈' },
-        { href: '/prompts', label: 'Prompt Library', ico: '🧩' },
+        { href: '/insights', label: 'Insights', ico: 'insights' },
+        { href: '/prompts', label: 'Prompt Library', ico: 'prompts' },
       ],
     },
   ];
@@ -127,7 +128,7 @@
 <div class="app-shell">
   <aside class="sidebar" class:open={sidebarOpen}>
     <div class="brand">
-      <span class="brand-mark">⚖️</span>
+      <span class="brand-mark" aria-hidden="true"><Icon name="scale" size={22} strokeWidth={2.25} /></span>
       <div>
         <h1>Arbiter</h1>
         <p class="tagline">AI drafts, QA owns judgment</p>
@@ -143,7 +144,7 @@
           class:active={isActive(item.href)}
           onclick={() => (sidebarOpen = false)}
         >
-          <span class="ico" aria-hidden="true">{item.ico}</span>
+          <span class="ico" aria-hidden="true"><Icon name={item.ico} size={17} /></span>
           {item.label}
         </a>
       {/each}
@@ -153,7 +154,7 @@
   <div>
     <header class="topbar">
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="iconbtn menu-toggle" aria-label="Toggle menu" onclick={() => (sidebarOpen = !sidebarOpen)}>☰</button>
+        <button class="iconbtn menu-toggle" aria-label="Toggle menu" onclick={() => (sidebarOpen = !sidebarOpen)}><Icon name="menu" /></button>
         <span class="page-title">{pageTitle}</span>
       </div>
 
@@ -163,7 +164,7 @@
             <button class="proj-switch" onclick={() => (projMenuOpen = !projMenuOpen)} aria-haspopup="menu" aria-expanded={projMenuOpen}>
               <span class="dot"></span>
               {currentProject?.name ?? 'Project'}
-              <span aria-hidden="true" style="opacity:.6">▾</span>
+              <Icon name="chevron" size={14} class="op6" />
             </button>
             {#if projMenuOpen}
               <button class="menu-scrim" aria-label="Close menu" onclick={() => (projMenuOpen = false)}></button>
@@ -175,7 +176,7 @@
                   </button>
                 {/each}
                 <div class="dd-sep"></div>
-                <button class="dd-item accent" role="menuitem" onclick={() => { projMenuOpen = false; showCreate = true; }}>＋ New project</button>
+                <button class="dd-item accent" role="menuitem" onclick={() => { projMenuOpen = false; showCreate = true; }}><Icon name="plus" size={15} /> New project</button>
               </div>
             {/if}
           </div>
@@ -183,7 +184,7 @@
 
         {#if status}
           <div class="status-pop">
-            <button class="iconbtn" aria-label="System status" title="System status" onclick={() => (statusOpen = !statusOpen)}>◍</button>
+            <button class="iconbtn" aria-label="System status" title="System status" onclick={() => (statusOpen = !statusOpen)}><Icon name="status" size={17} /></button>
             {#if statusOpen}
               <button class="menu-scrim" aria-label="Close status" onclick={() => (statusOpen = false)}></button>
               <div class="status-menu">
@@ -199,7 +200,7 @@
           </div>
         {/if}
 
-        <button class="iconbtn" aria-label="Toggle theme" onclick={toggleTheme}>◐</button>
+        <button class="iconbtn" aria-label="Toggle theme" onclick={toggleTheme}><Icon name="theme" size={17} /></button>
       </div>
     </header>
 

@@ -13,6 +13,7 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
+    "@lucide/svelte": "^1.23.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.69.0",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",

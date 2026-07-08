@@ -9,7 +9,8 @@
     type TestCase,
     type WorkflowMeta,
   } from '$lib/api';
-  import { CATEGORIES, categoryOf, iconOf } from '$lib/catalog';
+  import { CATEGORIES, categoryOf } from '$lib/catalog';
+  import Icon from '$lib/components/Icon.svelte';
   import Pipeline from '$lib/components/Pipeline.svelte';
   import Sanitization from '$lib/components/Sanitization.svelte';
   import ContextPack from '$lib/components/ContextPack.svelte';
@@ -147,7 +148,7 @@
       <p class="sub">{workflows.length} governed QA/QE workflows — each runs the same sanitize → ground → generate → validate → gate pipeline.</p>
     </div>
     <div class="search">
-      <span aria-hidden="true" style="opacity:.5">🔍</span>
+      <Icon name="search" size={16} class="op5" />
       <input type="search" placeholder="Search workflows…" bind:value={search} aria-label="Search workflows" />
     </div>
   </div>
@@ -157,11 +158,11 @@
 
   {#each groups as g}
     <section class="cat-group">
-      <h3>{g.icon} {g.label} <span style="opacity:.5">· {g.items.length}</span></h3>
+      <h3><span class="cat-ico"><Icon name={g.key} size={15} /></span> {g.label} <span style="opacity:.5">· {g.items.length}</span></h3>
       <div class="cat-grid">
         {#each g.items as w}
           <button class="wf-card" onclick={() => openWorkflow(w.id)}>
-            <span class="wf-name"><span class="wf-ico" aria-hidden="true">{iconOf(w.id)}</span>{w.label}</span>
+            <span class="wf-name"><span class="wf-ico" aria-hidden="true"><Icon name={categoryOf(w.id)} size={16} /></span>{w.label}</span>
             <span class="wf-desc">{w.description}</span>
             <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:2px">
               <span class="risk-dot {w.defaultRiskTier}"></span>{w.defaultRiskTier} risk
@@ -174,10 +175,10 @@
 {:else}
   <!-- ===== Run view ===== -->
   <div class="runview-top">
-    <button class="back-link" onclick={backToCatalog}>← Workflows</button>
+    <button class="back-link" onclick={backToCatalog}><Icon name="back" size={15} /> Workflows</button>
     <div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span aria-hidden="true">{iconOf(selected.id)}</span>
+        <span aria-hidden="true" style="display:inline-flex"><Icon name={categoryOf(selected.id)} size={18} /></span>
         <strong style="font-size:16px">{selected.label}</strong>
         <span class="risk-dot {selected.defaultRiskTier}" title="{selected.defaultRiskTier} risk"></span>
       </div>
@@ -199,7 +200,7 @@
           <div class="row">
             <input type="text" placeholder="Source title" bind:value={ctx.title} />
             {#if contexts.length > 1}
-              <button class="ghost small" style="margin:0" type="button" onclick={() => removeContext(i)}>✕</button>
+              <button class="ghost small" style="margin:0;display:inline-flex" type="button" aria-label="Remove context" onclick={() => removeContext(i)}><Icon name="close" size={14} /></button>
             {/if}
           </div>
           <textarea rows="3" placeholder="Paste schema / spec / ticket context…" bind:value={ctx.content}></textarea>
@@ -208,7 +209,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="ghost small" style="margin:0" type="button" onclick={addContext}>+ Add context source</button>
         <input type="file" accept=".json,.yaml,.yml" bind:this={fileInput} onchange={onOpenApiFile} hidden />
-        <button class="ghost small" style="margin:0" type="button" onclick={() => fileInput?.click()}>⬆ Upload OpenAPI / schema</button>
+        <button class="ghost small" style="margin:0;display:inline-flex;align-items:center;gap:6px" type="button" onclick={() => fileInput?.click()}><Icon name="upload" size={14} /> Upload OpenAPI / schema</button>
       </div>
       <div style="display:flex;gap:6px;margin-bottom:12px">
         <input type="text" placeholder="Jira key (e.g. BOT-123)" bind:value={jiraKey} style="flex:1" />

@@ -139,9 +139,20 @@ a {
 }
 .nav-item .ico {
   width: 18px;
-  text-align: center;
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.9;
+}
+.op5 {
+  opacity: 0.5;
+}
+.op6 {
+  opacity: 0.6;
+}
+.cat-ico {
+  display: inline-flex;
+  align-items: center;
 }
 .nav-item:hover {
   background: var(--inset);
@@ -377,6 +388,9 @@ a {
   margin-bottom: 24px;
 }
 .cat-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
