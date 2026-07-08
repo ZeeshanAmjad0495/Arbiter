@@ -49,6 +49,18 @@ const EnvSchema = z.object({
   JIRA_EMAIL: z.string().optional(),
   JIRA_API_TOKEN: z.string().optional(),
 
+  // Confluence read-only fetch-by-page-id (grounding source, same read-only pattern as Jira).
+  CONFLUENCE_BASE_URL: optionalUrl,
+  CONFLUENCE_EMAIL: z.string().optional(),
+  CONFLUENCE_API_TOKEN: z.string().optional(),
+
+  // GitHub — the first real WriteGate target (gated defect write-back). Writes ONLY
+  // to this repo, ONLY via the human-approved WriteGate, NEVER the connected Jira.
+  GITHUB_TOKEN: z.string().optional(),
+  GITHUB_OWNER: z.string().optional(),
+  GITHUB_REPO: z.string().optional(),
+  GITHUB_API_URL: z.string().url().default('https://api.github.com'),
+
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   OTEL_SERVICE_NAME: z.string().default('arbiter'),
 
@@ -95,6 +107,12 @@ export interface ArbiterConfig {
     readonly model: string;
   };
   readonly jira: {
+    readonly configured: boolean;
+  };
+  readonly confluence: {
+    readonly configured: boolean;
+  };
+  readonly github: {
     readonly configured: boolean;
   };
 }
@@ -148,6 +166,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     },
     jira: {
       configured: Boolean(env.JIRA_BASE_URL && env.JIRA_EMAIL && env.JIRA_API_TOKEN),
+    },
+    confluence: {
+      configured: Boolean(env.CONFLUENCE_BASE_URL && env.CONFLUENCE_EMAIL && env.CONFLUENCE_API_TOKEN),
+    },
+    github: {
+      configured: Boolean(env.GITHUB_TOKEN && env.GITHUB_OWNER && env.GITHUB_REPO),
     },
   };
 }

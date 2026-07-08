@@ -35,6 +35,7 @@ import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
 import type { AuthService } from './auth';
+import { fetchConfluencePage } from './confluence';
 import { fetchJiraIssue } from './jira';
 import { validateData } from './validate';
 
@@ -386,6 +387,21 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       return reply.send({ context: await fetchJiraIssue(request.params.key) });
     } catch (e) {
       return reply.status(502).send({ error: 'jira_fetch_failed', message: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // Read-only Confluence page fetch (grounding source; same read-only invariant as Jira).
+  app.get<{ Params: { id: string } }>('/v1/confluence/:id', async (request, reply) => {
+    if (!config.confluence.configured) {
+      return reply
+        .status(501)
+        .send({ error: 'confluence_not_configured', message: 'Set CONFLUENCE_BASE_URL, CONFLUENCE_EMAIL, CONFLUENCE_API_TOKEN in .env to enable Confluence fetch.' });
+    }
+    if (!/^[0-9]{1,20}$/.test(request.params.id)) return reply.status(400).send({ error: 'invalid_page_id' });
+    try {
+      return reply.send({ context: await fetchConfluencePage(request.params.id) });
+    } catch (e) {
+      return reply.status(502).send({ error: 'confluence_fetch_failed', message: e instanceof Error ? e.message : String(e) });
     }
   });
 
