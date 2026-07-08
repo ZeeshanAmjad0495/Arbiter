@@ -21,6 +21,7 @@ import {
   newProjectSchemaId,
   newReviewLogId,
   nowIso,
+  toPublicUser,
   unifiedDiff,
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
@@ -28,8 +29,12 @@ import { type GuardrailEngine, buildChunks, computeQualityMetrics, retrieveKnowl
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
+import type { AuthService } from './auth';
 import { fetchJiraIssue } from './jira';
 import { validateData } from './validate';
+
+/** Request fields set by the auth hook. */
+type WithAuth = FastifyRequest & { authUserId?: UserId; authRole?: string };
 
 const ReviewBody = z.object({
   decision: z.enum(['approved', 'rejected', 'needs_changes']),
@@ -99,8 +104,10 @@ export interface ServerDeps {
   readonly engine: GuardrailEngine;
   /** Project used when a request carries no `x-arbiter-project` header (offline/demo default). */
   readonly defaultProjectId: ProjectId;
-  /** Single acting user until per-user SSO lands (see Deferred). */
+  /** Actor used when a request is unauthenticated (auth disabled / master token). */
   readonly defaultActorId: UserId;
+  /** Key-based auth. When set, /v1 (except /v1/auth/*) requires a valid session. */
+  readonly auth?: AuthService;
   readonly webDir?: string;
   /** Defaults to true; tests pass false to keep output readable. */
   readonly logger?: boolean;
@@ -110,18 +117,43 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? true });
   const config = getConfig();
 
-  // Minimal auth guard until Google SSO (Phase 1): when ARBITER_API_TOKEN is set,
-  // all /v1 and /api routes require `Authorization: Bearer <token>`.
+  // Key-based session auth. Public: health, status, and the login/logout endpoints.
+  // Everything else under /v1 requires a valid session (or the admin master token).
   const apiToken = config.env.ARBITER_API_TOKEN;
-  if (apiToken) {
+  const bearer = (request: FastifyRequest): string => {
+    const a = request.headers.authorization ?? '';
+    return a.startsWith('Bearer ') ? a.slice(7).trim() : '';
+  };
+  const isPublic = (path: string): boolean =>
+    path === '/health' ||
+    path === '/api/status' ||
+    path === '/v1/auth/login' ||
+    path === '/v1/auth/logout' ||
+    (!path.startsWith('/v1') && !path.startsWith('/api'));
+
+  if (deps.auth || apiToken) {
     app.addHook('onRequest', async (request, reply) => {
       const path = request.url.split('?')[0] ?? '';
-      if (path === '/health' || (!path.startsWith('/v1') && !path.startsWith('/api'))) return;
-      if (request.headers.authorization !== `Bearer ${apiToken}`) {
-        return reply.status(401).send({ error: 'unauthorized' });
+      if (isPublic(path)) return;
+      const token = bearer(request);
+      if (apiToken && token && token === apiToken) {
+        (request as WithAuth).authUserId = deps.defaultActorId;
+        (request as WithAuth).authRole = 'admin';
+        return;
       }
+      if (deps.auth) {
+        const authed = token ? await deps.auth.authenticate(token) : null;
+        if (!authed) return reply.status(401).send({ error: 'unauthorized' });
+        (request as WithAuth).authUserId = authed.userId;
+        (request as WithAuth).authRole = authed.user.role;
+        return;
+      }
+      return reply.status(401).send({ error: 'unauthorized' });
     });
   }
+
+  /** The acting user for attribution — the authenticated user, or the default actor. */
+  const actorFor = (request: FastifyRequest): UserId => (request as WithAuth).authUserId ?? deps.defaultActorId;
 
   const modes = {
     persistence: config.persistence,
@@ -162,7 +194,46 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   }
 
   app.get('/health', async () => ({ status: 'ok', modes }));
-  app.get('/api/status', async () => ({ modes, models: config.models, integrations: { jira: config.jira.configured } }));
+  app.get('/api/status', async () => ({
+    modes,
+    models: config.models,
+    integrations: { jira: config.jira.configured },
+    authEnabled: Boolean(deps.auth),
+  }));
+
+  // ----- Auth (email-delivered access key → session with expiry) -----
+  app.post('/v1/auth/login', async (request, reply) => {
+    if (!deps.auth) return reply.status(501).send({ error: 'auth_disabled' });
+    const parsed = z.object({ email: z.string().email(), key: z.string().min(1).max(200) }).safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body' });
+    const result = await deps.auth.login(parsed.data.email, parsed.data.key);
+    if (!result) return reply.status(401).send({ error: 'invalid_credentials' });
+    return result; // { token, expiresAt, user }
+  });
+
+  app.post('/v1/auth/logout', async (request) => {
+    if (deps.auth) await deps.auth.logout(bearer(request));
+    return { ok: true };
+  });
+
+  app.get('/v1/auth/me', async (request, reply) => {
+    const uid = (request as WithAuth).authUserId;
+    if (!uid) return reply.status(401).send({ error: 'unauthorized' });
+    const user = await deps.engine.repos.users.get(uid);
+    return user ? { user: toPublicUser(user) } : reply.status(401).send({ error: 'unauthorized' });
+  });
+
+  // Issue/rotate an access key for an email (admin only). In offline/dev the key is
+  // returned so the admin can relay it; a real deployment emails it (SES/SMTP).
+  app.post('/v1/auth/issue-key', async (request, reply) => {
+    if (!deps.auth) return reply.status(501).send({ error: 'auth_disabled' });
+    if ((request as WithAuth).authRole !== 'admin') return reply.status(403).send({ error: 'forbidden' });
+    const parsed = z.object({ email: z.string().email(), role: z.enum(['qa', 'qa_lead', 'admin']).default('qa') }).safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body' });
+    const { user, key } = await deps.auth.issueKey(parsed.data.email, parsed.data.role);
+    app.log.info(`[auth] issued access key for ${user.email} (role ${user.role})`);
+    return { user, key };
+  });
 
   // ----- Projects (multi-tenant surface) -----
   app.get('/v1/projects', async () => {
@@ -337,7 +408,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       def,
       {
         projectId,
-        actorId: deps.defaultActorId,
+        actorId: actorFor(request),
         requirement: body.requirement,
         context,
         ...(body.riskTier ? { riskTier: body.riskTier } : {}),
@@ -488,7 +559,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       decision,
       mode: 'pre_approval',
       riskTier: artifact.riskTier,
-      reviewer: deps.defaultActorId,
+      reviewer: actorFor(request),
       ...(editDiff ? { editDiff } : {}),
       ...(dwellMs !== undefined ? { dwellMs } : {}),
       decidedAt: now,
@@ -497,7 +568,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const audit = AuditEvent.parse({
       id: newAuditEventId(),
       projectId,
-      actorId: deps.defaultActorId,
+      actorId: actorFor(request),
       workflowRunId: artifact.workflowRunId,
       action: 'gate.decision',
       sources: [],

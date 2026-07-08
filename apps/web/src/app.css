@@ -207,6 +207,23 @@ a {
   border-color: var(--line-strong);
   color: var(--ink);
 }
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar:hover {
+  border-color: var(--accent);
+}
 .content {
   padding: 22px 26px 56px;
   max-width: 1340px;

@@ -11,6 +11,7 @@ import {
   type ProjectId,
   ProjectSchema,
   ReviewLog,
+  Session,
   User,
   type WorkflowRunId,
 } from '@arbiter/core';
@@ -22,6 +23,7 @@ import type {
   RepositoryBundle,
   ReviewRepository,
   SchemaRepository,
+  SessionRepository,
   UserRepository,
 } from './types';
 
@@ -131,27 +133,64 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     },
   };
 
+  const rowToUser = (row: Record<string, unknown>): User =>
+    User.parse({
+      id: row.id,
+      email: row.email,
+      role: row.role,
+      accessKeyHash: row.access_key_hash ?? undefined,
+      createdAt: iso(row.created_at as Date | string),
+    });
+
   const users: UserRepository = {
     async upsert(user) {
       await pool.query(
-        `INSERT INTO users (id, email, role, created_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role`,
-        [user.id, user.email, user.role, user.createdAt],
+        `INSERT INTO users (id, email, role, access_key_hash, created_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, access_key_hash = EXCLUDED.access_key_hash`,
+        [user.id, user.email, user.role, user.accessKeyHash ?? null, user.createdAt],
       );
       return user;
     },
     async get(id) {
-      const { rows } = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = $1', [id]);
-      const row = rows[0];
-      if (!row) return null;
-      return User.parse({ id: row.id, email: row.email, role: row.role, createdAt: iso(row.created_at) });
+      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users WHERE id = $1', [id]);
+      return rows[0] ? rowToUser(rows[0]) : null;
     },
     async getByEmail(email) {
-      const { rows } = await pool.query('SELECT id, email, role, created_at FROM users WHERE email = $1', [email]);
+      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users WHERE email = $1', [email]);
+      return rows[0] ? rowToUser(rows[0]) : null;
+    },
+  };
+
+  const sessions: SessionRepository = {
+    async create(session) {
+      await pool.query('INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)', [
+        session.id,
+        session.userId,
+        session.tokenHash,
+        session.createdAt,
+        session.expiresAt,
+      ]);
+      return session;
+    },
+    async getByTokenHash(tokenHash) {
+      const { rows } = await pool.query('SELECT id, user_id, token_hash, created_at, expires_at FROM sessions WHERE token_hash = $1', [tokenHash]);
       const row = rows[0];
       if (!row) return null;
-      return User.parse({ id: row.id, email: row.email, role: row.role, createdAt: iso(row.created_at) });
+      return Session.parse({
+        id: row.id,
+        userId: row.user_id,
+        tokenHash: row.token_hash,
+        createdAt: iso(row.created_at as Date | string),
+        expiresAt: iso(row.expires_at as Date | string),
+      });
+    },
+    async delete(id) {
+      await pool.query('DELETE FROM sessions WHERE id = $1', [id]);
+    },
+    async deleteExpired(nowIso) {
+      const { rowCount } = await pool.query('DELETE FROM sessions WHERE expires_at < $1', [nowIso]);
+      return rowCount ?? 0;
     },
   };
 
@@ -371,6 +410,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     kind: 'postgres',
     projects,
     users,
+    sessions,
     artifacts,
     audit,
     reviews,

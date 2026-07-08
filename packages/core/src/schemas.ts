@@ -273,9 +273,34 @@ export const User = z.object({
   id: UserId,
   email: z.string().email(),
   role: UserRole.default('qa'),
+  /** sha256 of the user's access key (the key itself is emailed, never stored). */
+  accessKeyHash: z.string().optional(),
   createdAt: z.string().datetime(),
 });
 export type User = z.infer<typeof User>;
+
+/** A safe, client-facing view of a user — never includes the access-key hash. */
+export const PublicUser = z.object({ id: UserId, email: z.string().email(), role: UserRole });
+export type PublicUser = z.infer<typeof PublicUser>;
+export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, role: u.role });
+
+/* ------------------------------------------------------------------ *
+ * Auth sessions (key-based login → session with expiry)               *
+ * ------------------------------------------------------------------ */
+
+export const SessionId = z.string().uuid().brand<'SessionId'>();
+export type SessionId = z.infer<typeof SessionId>;
+export const newSessionId = (): SessionId => SessionId.parse(randomUUID());
+
+export const Session = z.object({
+  id: SessionId,
+  userId: UserId,
+  /** sha256 of the opaque session token (the token is sent to the client, not stored). */
+  tokenHash: z.string(),
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+export type Session = z.infer<typeof Session>;
 
 /* ------------------------------------------------------------------ *
  * Per-project knowledge (RAG substrate) — project-scoped, read-only   *

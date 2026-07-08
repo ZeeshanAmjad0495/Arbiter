@@ -1,6 +1,7 @@
 import { getConfig } from '@arbiter/config';
 import { Project, ProjectId, User, UserId, nowIso } from '@arbiter/core';
 import { createGuardrailEngine } from '@arbiter/guardrail';
+import { AuthService } from './auth';
 import { buildServer } from './server';
 
 // Stable ids so restarts are idempotent against a persistent store (a fresh
@@ -31,7 +32,18 @@ async function main(): Promise<void> {
   await engine.repos.projects.upsert(project);
   await engine.repos.users.upsert(actor);
 
-  const app = buildServer({ engine, defaultProjectId: project.id, defaultActorId: actor.id });
+  // Key-based auth. Bootstrap an admin: in non-production always (re)issue + log a
+  // key so there's a way in; in production only if the admin has none yet.
+  const auth = new AuthService(engine.repos, config.env.ARBITER_SESSION_TTL_HOURS * 3600 * 1000);
+  const adminEmail = config.env.ARBITER_ADMIN_EMAIL;
+  const admin = await engine.repos.users.getByEmail(adminEmail);
+  if (config.env.NODE_ENV !== 'production' || !admin?.accessKeyHash) {
+    const { key } = await auth.issueKey(adminEmail, 'admin');
+    // eslint-disable-next-line no-console
+    console.log(`\n🔑  Arbiter admin login\n    email: ${adminEmail}\n    key:   ${key}\n`);
+  }
+
+  const app = buildServer({ engine, defaultProjectId: project.id, defaultActorId: actor.id, auth });
 
   const port = config.env.ARBITER_API_PORT;
   const host = config.env.ARBITER_API_HOST;

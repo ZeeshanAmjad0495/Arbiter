@@ -11,6 +11,8 @@ import type {
   ProjectSchema,
   ProjectSchemaId,
   ReviewLog,
+  Session,
+  SessionId,
   User,
   UserId,
   WorkflowRunId,
@@ -26,6 +28,14 @@ export interface UserRepository {
   upsert(user: User): Promise<User>;
   get(id: UserId): Promise<User | null>;
   getByEmail(email: string): Promise<User | null>;
+}
+
+export interface SessionRepository {
+  create(session: Session): Promise<Session>;
+  getByTokenHash(tokenHash: string): Promise<Session | null>;
+  delete(id: SessionId): Promise<void>;
+  /** Housekeeping: drop sessions whose expiry is before `nowIso`. Returns count. */
+  deleteExpired(nowIso: string): Promise<number>;
 }
 
 /** All reads/writes are project-scoped — project_id is a mandatory parameter, never LLM-supplied. */
@@ -90,6 +100,7 @@ export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
   readonly users: UserRepository;
+  readonly sessions: SessionRepository;
   readonly artifacts: ArtifactRepository;
   readonly audit: AuditRepository;
   readonly reviews: ReviewRepository;

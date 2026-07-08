@@ -16,10 +16,80 @@ export function setActiveProject(id: string | null): void {
   else localStorage.removeItem('arbiter-project');
 }
 
-function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+let sessionToken: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem('arbiter-session') : null;
+
+export function setSession(token: string | null): void {
+  sessionToken = token;
+  if (typeof localStorage === 'undefined') return;
+  if (token) localStorage.setItem('arbiter-session', token);
+  else localStorage.removeItem('arbiter-session');
+}
+export function hasSession(): boolean {
+  return !!sessionToken;
+}
+
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (activeProjectId) headers.set('x-arbiter-project', activeProjectId);
-  return fetch(path, { ...init, headers });
+  if (sessionToken) headers.set('authorization', `Bearer ${sessionToken}`);
+  const res = await fetch(path, { ...init, headers });
+  // A 401 on a session-carrying request means the session is gone/expired → re-login.
+  if (res.status === 401 && sessionToken && !path.startsWith('/v1/auth/')) {
+    setSession(null);
+    if (typeof location !== 'undefined') location.reload();
+  }
+  return res;
+}
+
+/* ----- Auth ----- */
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: string;
+}
+
+export async function login(email: string, key: string): Promise<AuthUser> {
+  const res = await fetch('/v1/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, key }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error === 'invalid_credentials' ? 'Invalid email or access key.' : `Login failed (${res.status})`);
+  }
+  const data = await res.json();
+  setSession(data.token);
+  return data.user;
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await apiFetch('/v1/auth/logout', { method: 'POST' });
+  } catch {
+    /* ignore */
+  }
+  setSession(null);
+}
+
+export async function getMe(): Promise<AuthUser | null> {
+  const res = await apiFetch('/v1/auth/me');
+  if (!res.ok) return null;
+  return (await res.json()).user;
+}
+
+export async function issueKey(email: string, role = 'qa'): Promise<{ user: AuthUser; key: string }> {
+  const res = await apiFetch('/v1/auth/issue-key', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Issue key failed (${res.status}): ${detail}`);
+  }
+  return res.json();
 }
 
 export interface ProjectInfo {
@@ -258,6 +328,7 @@ export async function deleteKnowledge(id: string): Promise<void> {
 export interface StatusInfo {
   modes: { persistence: string; sanitizer: string; llm: string; telemetry: string; demask: string };
   models: { draft: string; default: string; judge: string };
+  authEnabled?: boolean;
 }
 
 export async function getStatus(): Promise<StatusInfo> {

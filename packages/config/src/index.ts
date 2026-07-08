@@ -55,9 +55,13 @@ const EnvSchema = z.object({
   ARBITER_API_PORT: z.coerce.number().int().positive().default(4310),
   // Bind to localhost by default; opt into wider exposure explicitly.
   ARBITER_API_HOST: z.string().default('127.0.0.1'),
-  // When set, all /v1 and /api routes require `Authorization: Bearer <token>`
-  // (a minimal guard until Google SSO lands in Phase 1).
+  // Optional admin master token — can issue access keys and bypasses session auth.
   ARBITER_API_TOKEN: z.string().optional(),
+
+  // Key-based auth. A bootstrap admin is provisioned at boot; in non-production a
+  // fresh admin access key is logged so there's always a way in.
+  ARBITER_ADMIN_EMAIL: z.string().email().default('admin@arbiter.local'),
+  ARBITER_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

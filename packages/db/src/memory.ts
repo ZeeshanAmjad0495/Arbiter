@@ -11,6 +11,8 @@ import type {
   ProjectSchema,
   ProjectSchemaId,
   ReviewLog,
+  Session,
+  SessionId,
   User,
   UserId,
   WorkflowRunId,
@@ -23,6 +25,7 @@ import type {
   RepositoryBundle,
   ReviewRepository,
   SchemaRepository,
+  SessionRepository,
   UserRepository,
 } from './types';
 
@@ -171,10 +174,36 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  const sessionList: Session[] = [];
+  const sessionRepo: SessionRepository = {
+    async create(session: Session) {
+      sessionList.push(session);
+      return session;
+    },
+    async getByTokenHash(tokenHash: string) {
+      return sessionList.find((s) => s.tokenHash === tokenHash) ?? null;
+    },
+    async delete(id: SessionId) {
+      const i = sessionList.findIndex((s) => s.id === id);
+      if (i >= 0) sessionList.splice(i, 1);
+    },
+    async deleteExpired(nowIso: string) {
+      let removed = 0;
+      for (let i = sessionList.length - 1; i >= 0; i--) {
+        if (sessionList[i]!.expiresAt < nowIso) {
+          sessionList.splice(i, 1);
+          removed++;
+        }
+      }
+      return removed;
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
     users: userRepo,
+    sessions: sessionRepo,
     artifacts: artifactRepo,
     audit: auditRepo,
     reviews: reviewRepo,

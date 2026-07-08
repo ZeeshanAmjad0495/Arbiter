@@ -5,14 +5,18 @@
   import {
     createProject,
     getActiveProject,
+    getMe,
     getStatus,
     listProjects,
+    logout,
     setActiveProject,
+    type AuthUser,
     type ProjectInfo,
     type StatusInfo,
   } from '$lib/api';
   import Modal from '$lib/components/Modal.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import Login from '$lib/components/Login.svelte';
   import { CATEGORIES } from '$lib/catalog';
 
   let { children } = $props();
@@ -33,6 +37,12 @@
   let projMenuOpen = $state(false);
   let statusOpen = $state(false);
   let sidebarOpen = $state(false);
+  let userMenuOpen = $state(false);
+
+  // Auth gate
+  let authReady = $state(false);
+  let needLogin = $state(false);
+  let currentUser = $state<AuthUser | null>(null);
 
   interface NavItem {
     href: string;
@@ -137,23 +147,59 @@
     localStorage.setItem('arbiter-theme', theme);
   }
 
-  onMount(async () => {
-    const saved = localStorage.getItem('arbiter-theme') as 'light' | 'dark' | null;
-    theme = saved ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.dataset.theme = theme;
+  async function afterAuth() {
     try {
       await loadProjects();
     } catch {
       /* API-only / offline */
     }
+  }
+
+  function onLoggedIn(user: AuthUser) {
+    currentUser = user;
+    needLogin = false;
+    void afterAuth();
+  }
+
+  async function doLogout() {
+    userMenuOpen = false;
+    await logout();
+    location.reload();
+  }
+
+  onMount(async () => {
+    const saved = localStorage.getItem('arbiter-theme') as 'light' | 'dark' | null;
+    theme = saved ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+
+    // Status is public — it tells us whether auth is enabled.
     try {
       status = await getStatus();
     } catch {
       status = null;
     }
+    const authEnabled = status?.authEnabled ?? false;
+    if (!authEnabled) {
+      needLogin = false;
+    } else {
+      const me = await getMe().catch(() => null);
+      if (me) {
+        currentUser = me;
+        needLogin = false;
+      } else {
+        needLogin = true;
+      }
+    }
+    authReady = true;
+    if (!needLogin) await afterAuth();
   });
 </script>
 
+{#if !authReady}
+  <div style="min-height:100vh"></div>
+{:else if needLogin}
+  <Login onLogin={onLoggedIn} />
+{:else}
 <a class="skip-link" href="#main-content">Skip to main content</a>
 
 <div class="app-shell">
@@ -232,6 +278,25 @@
         {/if}
 
         <button class="iconbtn" aria-label="Toggle theme" onclick={toggleTheme}><Icon name="theme" size={17} /></button>
+
+        {#if currentUser}
+          <div style="position:relative">
+            <button class="avatar" aria-label="Account menu" onclick={() => (userMenuOpen = !userMenuOpen)} title={currentUser.email}>
+              {currentUser.email[0]?.toUpperCase() ?? '?'}
+            </button>
+            {#if userMenuOpen}
+              <button class="menu-scrim" aria-label="Close menu" onclick={() => (userMenuOpen = false)}></button>
+              <div class="dropdown" role="menu" style="width:220px">
+                <div style="padding:8px 10px">
+                  <div style="font-weight:600;font-size:13px;word-break:break-all">{currentUser.email}</div>
+                  <div style="font-size:11px;color:var(--muted);text-transform:capitalize">{currentUser.role}</div>
+                </div>
+                <div class="dd-sep"></div>
+                <button class="dd-item" role="menuitem" onclick={doLogout}>Sign out</button>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     </header>
 
@@ -240,6 +305,7 @@
     </main>
   </div>
 </div>
+{/if}
 
 {#if showCreate}
   <Modal title="New project" subtitle="Set up a fresh, isolated project — its runs, review queue, knowledge, schemas, and metrics are its own." onclose={() => (showCreate = false)}>
