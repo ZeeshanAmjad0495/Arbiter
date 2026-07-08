@@ -22,7 +22,8 @@
     "eval:redteam": "tsx evals/redteam.ts",
     "eval:export-ragas": "tsx evals/export-ragas-dataset.ts",
     "ingest": "tsx apps/api/src/cli/ingest.ts",
-    "demask:purge": "tsx apps/api/src/cli/demask-purge.ts"
+    "demask:purge": "tsx apps/api/src/cli/demask-purge.ts",
+    "zuub:e2e": "tsx evals/zuub-e2e.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",
