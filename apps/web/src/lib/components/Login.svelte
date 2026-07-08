@@ -23,7 +23,7 @@
   }
 </script>
 
-<div class="login-wrap">
+<main class="login-wrap">
   <div class="login-card">
     <div class="brand"><span class="mark"><Icon name="scale" size={24} strokeWidth={2.25} /></span> Arbiter</div>
     <p class="sub">Sign in with the access key sent to your email.</p>
@@ -42,7 +42,7 @@
     </button>
     <p class="hint">Don't have a key? Ask an admin to issue one for your email.</p>
   </div>
-</div>
+</main>
 
 <style>
   .login-wrap {

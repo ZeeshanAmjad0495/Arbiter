@@ -74,6 +74,9 @@ export async function logout(): Promise<void> {
 }
 
 export async function getMe(): Promise<AuthUser | null> {
+  // No token → don't even hit the network; a guaranteed 401 just logs a console
+  // error and slows the initial paint of the login screen.
+  if (!hasSession()) return null;
   const res = await apiFetch('/v1/auth/me');
   if (!res.ok) return null;
   return (await res.json()).user;

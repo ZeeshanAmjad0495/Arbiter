@@ -211,9 +211,13 @@ export default function () {
     cursor: pointer;
   }
   .tabs button.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
     color: #fff;
+  }
+  /* Dark theme flips to dark text on the light-indigo accent (matches .primary) for contrast. */
+  :global(:root[data-theme='dark']) .tabs button.active {
+    color: #171814;
   }
   .opt {
     color: var(--muted);
