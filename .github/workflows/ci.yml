@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Offline-first: every gate runs against in-memory repos + the deterministic
+      # stub LLM — no Postgres, no API keys, no network. Deterministic and fast.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Workflow eval gate
+        run: pnpm eval
+
+      - name: Red-team + RAG eval gate
+        run: pnpm eval:redteam
+
+      - name: Web typecheck / a11y (svelte-check)
+        run: pnpm --filter @arbiter/web run check

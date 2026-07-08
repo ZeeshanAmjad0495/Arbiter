@@ -100,23 +100,34 @@ Everything consciously deferred during Waves 0–1, with why it's safe today and
 
 | Item | Status today | Pull in when |
 |---|---|---|
-| **De-mask store tenant-scoping** ✅ shipped · **Postgres-backed store** still deferred | `put`/`resolve` are now project-scoped and **fail-closed cross-tenant** (a scoped mapping is invisible to another project); `tests/demask.test.ts` covers both modes. The Postgres-backed, row-authorized store remains deferred — it needs pool-threading through sanitize and `resolve` is still unused in the prod path | Postgres store: when de-mask rehydration ships (via WriteGate) |
+| ~~**De-mask store — Postgres-backed, row-authorized**~~ ✅ shipped | Durable AES-256-GCM vault in Postgres (`0008`, RLS FORCE, ciphertext-only — the DB never sees plaintext); atomic per-(project,type) placeholder allocation; `projectId` threaded through `sanitize()`/`sanitizeCore()`/`sanitizeJson()`; admin-gated `POST /v1/demask/resolve` re-identification (audited by count) + `POST /v1/demask/purge` retention. `tests/demask.test.ts` covers memory, durable, tenant-isolation, and the endpoint | — (uncomment `ARBITER_DEMASK_KEY` to activate durability) |
 | ~~**Real OTLP → Langfuse exporter**~~ ✅ shipped | `OtlpHttpExporter` + pure `toOtlpTraces` converter; the API flushes per-request spans to `OTEL_EXPORTER_OTLP_ENDPOINT` (→ Collector → Langfuse), best-effort, never blocks a request (`tests/otlp.test.ts`) | point it at a live collector |
 | ~~**Server-side Presidio custom recognizers**~~ ✅ shipped | `toPresidioRecognizers()` emits Arbiter's custom recognizers in Presidio's pattern-recognizer config shape (JS flags → Python inline flags), so the SAME recognizers load into a Presidio analyzer server for centralized tuning (`tests/presidio-config.test.ts`) | serialize + mount in the analyzer's registry at deploy |
 | ~~**Locale-aware sanitizer recognizers**~~ ✅ shipped | IBAN, E.164 international phone, UK NINO — anchored + validated, live in both engine paths (`tests/locale-sanitize.test.ts`) | — (extend with more locales on demand) |
 | ~~**Kimi read-failure distinct logging**~~ ✅ shipped | a failed error-body read now logs `kimi_error_body_read_failed` and surfaces `<body read failed>` instead of silently becoming `''` | — |
 | ~~**Container image size optimization**~~ ✅ shipped | added `.dockerignore` (keeps `node_modules`/`.git`/**`.env`** out of the build context + image); already multi-stage with `pnpm deploy --prod` on `node:22-slim`, non-root | fine-tune base at deploy time if needed |
 | **pgvector / dense retrieval** — seam in place; activates with an embeddings provider | lexical TF-IDF retrieval ships behind the stable `retrieveKnowledge` seam; the `0004` migration already adds a Postgres FTS gin index. Dense/pgvector needs an external embeddings model, so it's a drop-in behind the interface — not a gap in the current offline path | when an embeddings provider is wired |
-| **Streaming — provider capability ✅; UI wiring deferred** | `OpenAICompatProvider.generateStream` emits text + reasoning deltas over SSE and validates the accumulated JSON; `streamGenerate` falls back for non-streaming providers (`tests/streaming.test.ts`) | wire an SSE run endpoint + EventSource in the workbench (low ROI for structured JSON — partial JSON isn't renderable; the win is showing reasoning progress) |
+| ~~**Streaming — SSE run endpoint + workbench wiring**~~ ✅ shipped | `POST /v1/workflows/:id/run/stream` (Fastify `reply.hijack`) emits `open`/`stage`/`reasoning`/`done` SSE; the workbench shows a live stage stepper + reasoning panel via `runWorkflowStream`. Provider `generateStream` + `streamGenerate` fallback underneath (`tests/streaming.test.ts`) | — |
 | ~~**LiteLLM gateway + 2nd LLM provider**~~ ✅ shipped | `OpenAICompatProvider` (LiteLLM / any OpenAI-compatible endpoint); precedence Kimi > Anthropic > LiteLLM > stub; `createJudgeProvider` picks an independent provider for the judge | point at a running LiteLLM gateway |
 | **Expand eval suite → 20–30 cases/workflow** | ~20 code-based checks across 6 cases (CI gate seed) | ongoing, per workflow |
-| **Frontend a11y — hardening pass ✅; Lighthouse audit deferred** | skip-to-content link, `role="alert"` on async errors, `aria-live` result region, `aria-busy` run state; `svelte-check` a11y clean (0 warnings) | a full Lighthouse/axe run needs a browser — do it in a UI-polish milestone |
-| **LLM Eval Workbench** — judge core ✅ shipped; Ragas/garak/PyRIT deferred | `judgeArtifact` (rubric-scored LLM-as-judge, provider-pluggable, deterministic offline stub) + independent judge provider (`tests/judge.test.ts`). Ragas/garak/PyRIT are external Python tools | wire the Python eval tools + statistical gating as a billable client-facing track |
+| ~~**Frontend a11y — Lighthouse/axe audit**~~ ✅ shipped | Full Lighthouse run (desktop) across login + every authenticated page: **100 accessibility / best-practices / SEO** everywhere. Fixed a missing meta-description, added a `<main>` landmark to the login screen, removed a pre-auth console 401, and corrected an active-tab contrast ratio | — (re-run per UI change) |
+| **LLM Eval Workbench** — judge core ✅ · red-team/RAG harness ✅ · live Python tools scaffolded | `judgeArtifact` (rubric-scored LLM-as-judge) + independent judge provider (`tests/judge.test.ts`). **Red-team harness** (`pnpm eval:redteam`) runs the garak/PyRIT/Ragas *methodology* natively against the guardrail pipeline (offline gate; caught a real Stripe-key gap). Live-tool adapters (`evals/redteam.config.yaml`, dataset exporter, garak REST config) let the real Python tools drive a running server | run the Python tools in a client engagement (needs `pip install ragas garak pyrit`) |
 | **Gated Defect Write-Back → Jira** (Wave 1 #3) | deferred by the read-only-Jira constraint | **only** against a sandbox Jira / GitHub / TestRail, with explicit per-target authorization — never the connected workspace |
+
+## Wave 7 — Deployment-grade platform hardening *(shipped ✓ this session)*
+
+The governance spine got its production teeth — every item offline-first with a real ⇄ offline seam chosen by config, RLS-isolated, gated:
+
+- **Auth** — email-delivered access keys (sha256-hashed, shown once) → opaque sessions with TTL expiry; constant-time compare; login screen in the shell; admin bootstrap stable across restarts.
+- **Per-project schemas + Schema Validator** — saved JSON Schemas (RLS) + an ajv validator that reports errors by path without echoing PII.
+- **Knowledge Graph + GraphRAG** — deterministic entity/co-occurrence graph (`0007`, RLS), seed+expand retrieval behind `useGraph`, circular-viz UI. *(Reclassified from "delegated" — built deterministically, no embeddings.)*
+- **Streaming workbench (SSE)**, **durable Postgres de-mask vault**, **Playwright/k6 execution runner** (`0009`; runs authored tests, feeds Metrics — real k6 verified live), **red-team/RAG eval gate** (garak/PyRIT/Ragas methodology), **Lighthouse 100s** — see the deferred table above, all now ✅.
 
 ## Delegated permanently (never built)
 
-Test *execution* (Playwright/k6/Appium), visual-AI diffing (Percy/Chromatic), self-healing locators, predictive test-selection ML, fine-tuned models, browser-agent regression gates, GraphRAG, code embeddings, homegrown prompt/eval engines, consumer-driven-contract broker, quality-trend forecasting. See gap analysis §4.
+Visual-AI diffing (Percy/Chromatic), self-healing locators, predictive test-selection ML, fine-tuned models, browser-agent regression gates, code embeddings, homegrown prompt/eval engines, consumer-driven-contract broker, quality-trend forecasting. See gap analysis §4.
+
+*(Note: **test execution** via Playwright/k6 and **GraphRAG** were pulled OUT of this list and built — test execution as a governed run-and-read-back runner, GraphRAG deterministically — at the operator's request.)*
 
 ---
 
