@@ -20,7 +20,8 @@
     "docker:down": "docker compose down",
     "eval": "tsx evals/run.ts",
     "eval:redteam": "tsx evals/redteam.ts",
-    "eval:export-ragas": "tsx evals/export-ragas-dataset.ts"
+    "eval:export-ragas": "tsx evals/export-ragas-dataset.ts",
+    "ingest:zuub": "tsx apps/api/src/cli/ingest-zuub.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",
