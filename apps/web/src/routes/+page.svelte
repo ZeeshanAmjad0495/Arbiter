@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import {
     fetchJira,
     listWorkflows,
@@ -39,16 +40,29 @@
   let error = $state('');
   let outcome = $state<Outcome | null>(null);
 
+  // The active category comes from ?cat (the sidebar sub-items). Search is global.
+  const currentCat = $derived($page.url.searchParams.get('cat') ?? 'author');
+  const activeCategory = $derived(CATEGORIES.find((c) => c.key === currentCat) ?? CATEGORIES[0]);
   const q = $derived(search.trim().toLowerCase());
+  const searching = $derived(q.length > 0);
   function matches(w: WorkflowMeta): boolean {
     return !q || w.label.toLowerCase().includes(q) || w.description.toLowerCase().includes(q);
   }
   const groups = $derived(
-    CATEGORIES.map((c) => ({
-      ...c,
-      items: workflows.filter((w) => categoryOf(w.id) === c.key && matches(w)),
-    })).filter((g) => g.items.length > 0),
+    searching
+      ? CATEGORIES.map((c) => ({ ...c, items: workflows.filter((w) => categoryOf(w.id) === c.key && matches(w)) })).filter((g) => g.items.length > 0)
+      : [{ ...activeCategory, items: workflows.filter((w) => categoryOf(w.id) === activeCategory.key) }],
   );
+  const matchCount = $derived(groups.reduce((n, g) => n + g.items.length, 0));
+
+  // Switching category (sidebar) returns to that category's catalog.
+  let lastCat = $state('');
+  $effect(() => {
+    if (currentCat !== lastCat) {
+      lastCat = currentCat;
+      selectedId = '';
+    }
+  });
 
   function applyWorkflow(meta: WorkflowMeta) {
     requirement = meta.ui.sampleRequirement;
@@ -144,21 +158,24 @@
   <!-- ===== Catalog ===== -->
   <div class="catalog-head">
     <div>
-      <h2>Workflows</h2>
-      <p class="sub">{workflows.length} governed QA/QE workflows — each runs the same sanitize → ground → generate → validate → gate pipeline.</p>
+      <h2>{searching ? 'Search results' : activeCategory.label}</h2>
+      <p class="sub">{searching ? `${matchCount} matching workflow${matchCount === 1 ? '' : 's'}` : activeCategory.blurb}</p>
     </div>
     <div class="search">
       <Icon name="search" size={16} class="op5" />
-      <input type="search" placeholder="Search workflows…" bind:value={search} aria-label="Search workflows" />
+      <input type="search" placeholder="Search all workflows…" bind:value={search} aria-label="Search workflows" />
     </div>
   </div>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   {#if workflows.length === 0 && !error}<div class="empty">Loading workflows…</div>{/if}
+  {#if searching && matchCount === 0}<div class="empty">No workflows match “{search}”.</div>{/if}
 
   {#each groups as g}
     <section class="cat-group">
-      <h3><span class="cat-ico"><Icon name={g.key} size={15} /></span> {g.label} <span style="opacity:.5">· {g.items.length}</span></h3>
+      {#if searching}
+        <h3><span class="cat-ico"><Icon name={g.key} size={15} /></span> {g.label} <span style="opacity:.5">· {g.items.length}</span></h3>
+      {/if}
       <div class="cat-grid">
         {#each g.items as w}
           <button class="wf-card" onclick={() => openWorkflow(w.id)}>

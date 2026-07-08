@@ -13,6 +13,7 @@
   } from '$lib/api';
   import Modal from '$lib/components/Modal.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import { CATEGORIES } from '$lib/catalog';
 
   let { children } = $props();
   let status = $state<StatusInfo | null>(null);
@@ -26,17 +27,23 @@
   let statusOpen = $state(false);
   let sidebarOpen = $state(false);
 
-  const NAV = [
+  interface NavItem {
+    href: string;
+    label: string;
+    ico: string;
+    cat?: string;
+  }
+  const NAV: { group: string; items: NavItem[] }[] = [
+    {
+      group: 'Workbench',
+      items: CATEGORIES.map((c) => ({ href: `/?cat=${c.key}`, label: c.label, ico: c.key, cat: c.key })),
+    },
     {
       group: 'Workspace',
       items: [
-        { href: '/', label: 'Workbench', ico: 'workbench' },
         { href: '/review', label: 'Review Queue', ico: 'review' },
+        { href: '/knowledge', label: 'Knowledge', ico: 'knowledge' },
       ],
-    },
-    {
-      group: 'Project data',
-      items: [{ href: '/knowledge', label: 'Knowledge', ico: 'knowledge' }],
     },
     {
       group: 'Insights',
@@ -57,15 +64,17 @@
   const liveModes = new Set(['postgres', 'presidio', 'anthropic', 'kimi', 'litellm', 'otlp', 'encrypted']);
 
   const activePath = $derived($page.url.pathname);
+  const currentCat = $derived($page.url.searchParams.get('cat') ?? 'author');
   const pageTitle = $derived(
     activePath === '/'
-      ? 'Workbench'
-      : (NAV.flatMap((g) => g.items).find((i) => i.href !== '/' && activePath.startsWith(i.href))?.label ?? 'Workbench'),
+      ? (CATEGORIES.find((c) => c.key === currentCat)?.label ?? 'Workbench')
+      : (NAV.flatMap((g) => g.items).find((i) => !i.cat && i.href !== '/' && activePath.startsWith(i.href))?.label ?? 'Arbiter'),
   );
   const currentProject = $derived(projects.find((p) => p.id === selectedProjectId));
 
-  function isActive(href: string): boolean {
-    return href === '/' ? activePath === '/' : activePath.startsWith(href);
+  function isActive(item: NavItem): boolean {
+    if (item.cat) return activePath === '/' && currentCat === item.cat;
+    return item.href === '/' ? activePath === '/' : activePath.startsWith(item.href);
   }
 
   async function loadProjects() {
@@ -141,7 +150,7 @@
         <a
           href={item.href}
           class="nav-item"
-          class:active={isActive(item.href)}
+          class:active={isActive(item)}
           onclick={() => (sidebarOpen = false)}
         >
           <span class="ico" aria-hidden="true"><Icon name={item.ico} size={17} /></span>
