@@ -21,7 +21,7 @@
     "eval": "tsx evals/run.ts",
     "eval:redteam": "tsx evals/redteam.ts",
     "eval:export-ragas": "tsx evals/export-ragas-dataset.ts",
-    "ingest:zuub": "tsx apps/api/src/cli/ingest-zuub.ts"
+    "ingest": "tsx apps/api/src/cli/ingest.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",
