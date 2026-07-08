@@ -49,6 +49,7 @@
     label: string;
     ico: string;
     cat?: string;
+    admin?: boolean;
   }
   const NAV: { group: string; items: NavItem[] }[] = [
     {
@@ -70,6 +71,7 @@
       items: [
         { href: '/insights', label: 'Insights', ico: 'insights' },
         { href: '/prompts', label: 'Prompt Library', ico: 'prompts' },
+        { href: '/demask', label: 'Re-identify', ico: 'demask', admin: true },
       ],
     },
   ];
@@ -218,7 +220,7 @@
 
     {#each NAV as grp}
       <div class="nav-group-label">{grp.group}</div>
-      {#each grp.items as item}
+      {#each grp.items.filter((i) => !i.admin || currentUser?.role === 'admin') as item}
         <a
           href={item.href}
           class="nav-item"

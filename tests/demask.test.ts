@@ -62,6 +62,21 @@ describe('durable (storage-backed) de-mask store', () => {
     expect(await store.resolve('[EMAIL_ADDRESS_1]', 'proj-A')).toBe('a1@x.com');
     expect(await store.resolve('[EMAIL_ADDRESS_1]', 'proj-B')).toBe('b1@x.com');
   });
+
+  // ageMs < 0 → cutoff is in the future, so every existing mapping is "older" → purged.
+  for (const durable of [false, true]) {
+    it(`${durable ? 'durable' : 'in-memory'}: project-scoped retention purge only drops the target tenant`, async () => {
+      const store = durable
+        ? createDemaskStore(loadConfig({ ARBITER_DEMASK_KEY: KEY }), createMemoryRepositories().demask)
+        : createDemaskStore(loadConfig({ ARBITER_DEMASK_KEY: KEY }));
+      const a = await store.put('EMAIL_ADDRESS', 'a@x.com', 'proj-A');
+      const b = await store.put('EMAIL_ADDRESS', 'b@x.com', 'proj-B');
+      const removed = await store.purgeProjectOlderThan('proj-A', -60_000);
+      expect(removed).toBe(1);
+      expect(await store.resolve(a, 'proj-A')).toBeNull(); // purged
+      expect(await store.resolve(b, 'proj-B')).toBe('b@x.com'); // untouched
+    });
+  }
 });
 
 describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
@@ -100,6 +115,23 @@ describe('POST /v1/demask/resolve (admin-only re-identification)', () => {
     const ev = audit.find((a) => a.action === 'demask.resolve');
     expect(ev?.detail).toMatchObject({ resolved: 1, unresolved: 0 });
     expect(JSON.stringify(ev)).not.toContain('jane@example.com'); // never audit the PII itself
+    await app.close();
+  });
+
+  it('purge is admin-only, tenant-scoped, and audited by count', async () => {
+    const { app, engine, projectId, login } = await setup();
+    await engine.sanitizer.sanitize('Email jane@example.com now.', projectId); // seed a mapping
+
+    const qaTok = await login('qa2@acme.com', 'qa');
+    expect((await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${qaTok}` }, payload: { olderThanHours: 1 } })).statusCode).toBe(403);
+
+    const adminTok = await login('admin2@acme.com', 'admin');
+    const res = await app.inject({ method: 'POST', url: '/v1/demask/purge', headers: { authorization: `Bearer ${adminTok}` }, payload: { olderThanHours: 1 } });
+    expect(res.statusCode).toBe(200);
+    expect(typeof res.json().removed).toBe('number'); // fresh mapping isn't 1h old → 0, but the plumbing works
+
+    const audit = await engine.repos.audit.listByProject(projectId);
+    expect(audit.some((a) => a.action === 'demask.purge')).toBe(true);
     await app.close();
   });
 

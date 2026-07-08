@@ -24,6 +24,7 @@
     Trash2,
     Circle,
     Play,
+    KeyRound,
   } from '@lucide/svelte';
 
   interface Props {
@@ -59,6 +60,7 @@
     trash: Trash2,
     search: Search,
     runner: Play,
+    demask: KeyRound,
     dot: Circle,
   };
 

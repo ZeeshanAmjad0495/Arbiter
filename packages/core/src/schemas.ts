@@ -192,6 +192,7 @@ export const AuditAction = z.enum([
   'gate.decision',
   'write.apply',
   'demask.resolve',
+  'demask.purge',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 

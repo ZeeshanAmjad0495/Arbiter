@@ -635,6 +635,31 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { text: rehydrated, resolved: resolvedMap.size, unresolved: tokens.length - resolvedMap.size };
   });
 
+  // Retention: drop this project's de-mask mappings older than N hours. Admin-only,
+  // project-scoped (works for the durable vault, which can't purge cross-project),
+  // audited by count. Run on a schedule (cron → this endpoint) for automatic retention.
+  app.post('/v1/demask/purge', async (request, reply) => {
+    if ((request as WithAuth).authRole !== 'admin') return reply.status(403).send({ error: 'forbidden' });
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = z.object({ olderThanHours: z.number().positive().max(8760).default(720) }).safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+
+    const removed = await deps.engine.sanitizer.demask.purgeProjectOlderThan(projectId, parsed.data.olderThanHours * 3600 * 1000);
+    await deps.engine.repos.audit.append(
+      AuditEvent.parse({
+        id: newAuditEventId(),
+        projectId,
+        actorId: actorFor(request),
+        workflowRunId: newWorkflowRunId(),
+        action: 'demask.purge',
+        detail: { olderThanHours: parsed.data.olderThanHours, removed },
+        createdAt: nowIso(),
+      }),
+    );
+    return { removed };
+  });
+
   // ----- Test execution runner (Playwright / k6) -----
   // Executes an Arbiter-authored test with the real tool (or the deterministic
   // offline stub) and records the normalized result so pass/fail feeds Metrics.

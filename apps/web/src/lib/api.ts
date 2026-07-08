@@ -374,6 +374,32 @@ export async function listExecutions(): Promise<TestExecution[]> {
   return (await res.json()).executions;
 }
 
+export async function resolveDemask(text: string): Promise<{ text: string; resolved: number; unresolved: number }> {
+  const res = await apiFetch('/v1/demask/resolve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Re-identify failed (${res.status}): ${detail}`);
+  }
+  return res.json();
+}
+
+export async function purgeDemask(olderThanHours: number): Promise<{ removed: number }> {
+  const res = await apiFetch('/v1/demask/purge', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ olderThanHours }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Purge failed (${res.status}): ${detail}`);
+  }
+  return res.json();
+}
+
 export interface KnowledgeDoc {
   id: string;
   title: string;

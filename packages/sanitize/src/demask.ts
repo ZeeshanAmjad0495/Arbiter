@@ -34,6 +34,12 @@ export interface DemaskStore {
   resolve(placeholder: string, projectId?: string): Promise<string | null>;
   /** Retention control — drop mappings older than the cutoff. Returns count removed. */
   purgeOlderThan(ageMs: number): Promise<number>;
+  /**
+   * Project-scoped retention — drop this project's mappings older than the cutoff.
+   * This is the production retention path: it works even for the durable store
+   * (whose global {@link purgeOlderThan} cannot run cross-project under RLS).
+   */
+  purgeProjectOlderThan(projectId: string, ageMs: number): Promise<number>;
   size(): number;
 }
 
@@ -106,6 +112,17 @@ class EphemeralDemaskStore implements DemaskStore {
     }
     return removed;
   }
+  async purgeProjectOlderThan(projectId: string, ageMs: number): Promise<number> {
+    const cutoff = Date.now() - ageMs;
+    let removed = 0;
+    for (const [k, v] of this.map) {
+      if (v.projectId === projectId && v.createdAtMs < cutoff) {
+        this.map.delete(k);
+        removed++;
+      }
+    }
+    return removed;
+  }
   size(): number {
     return this.map.size;
   }
@@ -146,6 +163,17 @@ class EncryptedDemaskStore implements DemaskStore {
     }
     return removed;
   }
+  async purgeProjectOlderThan(projectId: string, ageMs: number): Promise<number> {
+    const cutoff = Date.now() - ageMs;
+    let removed = 0;
+    for (const [k, v] of this.map) {
+      if (v.projectId === projectId && v.createdAtMs < cutoff) {
+        this.map.delete(k);
+        removed++;
+      }
+    }
+    return removed;
+  }
   size(): number {
     return this.map.size;
   }
@@ -180,11 +208,13 @@ class StoredDemaskStore implements DemaskStore {
     return entry ? decrypt(this.key, entry.cipher) : null;
   }
   async purgeOlderThan(ageMs: number): Promise<number> {
-    // Durable retention is enforced per-project via storage.purgeOlderThan(projectId, …)
-    // (a scheduled maintenance concern), which needs a project scope this global
-    // signature lacks. No-op here rather than a misleading partial purge.
+    // The GLOBAL purge can't run cross-project under RLS (each tenant needs its own
+    // GUC). Callers use purgeProjectOlderThan — the real, project-scoped path.
     void ageMs;
     return 0;
+  }
+  async purgeProjectOlderThan(projectId: string, ageMs: number): Promise<number> {
+    return this.storage.purgeOlderThan(projectId, Date.now() - ageMs);
   }
   size(): number {
     return this.puts; // best-effort: puts made by THIS process (durable count is per-project)
