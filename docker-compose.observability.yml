@@ -1,0 +1,74 @@
+# Self-hosted, FREE/OSS observability stack for Arbiter's read-only connectors.
+#   docker compose -f docker-compose.observability.yml up -d
+#
+# - Grafana (+ Loki logs + Prometheus metrics datasources) — dashboards/alerts/logs/metrics.
+# - GlitchTip — an OSS, Sentry-API-COMPATIBLE error tracker (a few containers, not the
+#   20-container Sentry self-hosted). Arbiter's Sentry connector works against it unchanged.
+#
+# All ports are local-only. After `up`, see docs: create a Grafana read-only service-account
+# token and a GlitchTip auth token, then put them in .env (SENTRY_*/GRAFANA_*).
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ['--config.file=/etc/prometheus/prometheus.yml']
+    volumes:
+      - ./docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - '9090:9090'
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: ['-config.file=/etc/loki/local-config.yaml']
+    ports:
+      - '3100:3100'
+
+  grafana:
+    image: grafana/grafana-oss:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./docker/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - '3001:3000'
+    depends_on: [loki, prometheus]
+
+  glitchtip-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: glitchtip
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip-pg:/var/lib/postgresql/data
+
+  glitchtip-redis:
+    image: redis:7-alpine
+
+  glitchtip:
+    image: glitchtip/glitchtip:v4.1.4
+    depends_on: [glitchtip-postgres, glitchtip-redis]
+    environment:
+      DATABASE_URL: postgres://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      REDIS_URL: redis://glitchtip-redis:6379/0
+      SECRET_KEY: dev-only-change-me-0000000000000000
+      PORT: '8000'
+      GLITCHTIP_DOMAIN: http://localhost:8080
+      ENABLE_OPEN_USER_REGISTRATION: 'true'
+    ports:
+      - '8080:8000'
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:v4.1.4
+    command: ['./bin/run-celery-with-beat.sh']
+    depends_on: [glitchtip-postgres, glitchtip-redis]
+    environment:
+      DATABASE_URL: postgres://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      REDIS_URL: redis://glitchtip-redis:6379/0
+      SECRET_KEY: dev-only-change-me-0000000000000000
+
+volumes:
+  grafana-data:
+  glitchtip-pg:

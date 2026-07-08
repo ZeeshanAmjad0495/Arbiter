@@ -61,6 +61,15 @@ const EnvSchema = z.object({
   GITHUB_REPO: z.string().optional(),
   GITHUB_API_URL: z.string().url().default('https://api.github.com'),
 
+  // Read-only observability ground sources — FREE/OSS only (GET-only; sanitized).
+  // Sentry (self-hosted OSS / free tier) + Grafana (OSS; its Loki/Prometheus
+  // datasources cover logs+metrics). No paid SaaS (Datadog/Splunk) per policy.
+  SENTRY_BASE_URL: z.string().url().default('https://sentry.io'),
+  SENTRY_ORG: z.string().optional(),
+  SENTRY_AUTH_TOKEN: z.string().optional(),
+  GRAFANA_URL: optionalUrl,
+  GRAFANA_TOKEN: z.string().optional(),
+
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
   OTEL_SERVICE_NAME: z.string().default('arbiter'),
 
@@ -121,6 +130,12 @@ export interface ArbiterConfig {
   readonly github: {
     readonly configured: boolean;
   };
+  readonly sentry: {
+    readonly configured: boolean;
+  };
+  readonly grafana: {
+    readonly configured: boolean;
+  };
 }
 
 let cached: ArbiterConfig | null = null;
@@ -179,6 +194,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     },
     github: {
       configured: Boolean(env.GITHUB_TOKEN && env.GITHUB_OWNER && env.GITHUB_REPO),
+    },
+    sentry: {
+      configured: Boolean(env.SENTRY_ORG && env.SENTRY_AUTH_TOKEN),
+    },
+    grafana: {
+      configured: Boolean(env.GRAFANA_URL && env.GRAFANA_TOKEN),
     },
   };
 }

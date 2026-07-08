@@ -28,6 +28,7 @@ import { buildChunks, embedTexts, embeddingsEnabled } from '@arbiter/guardrail';
 import { type SanitizePort, createSanitizer } from '@arbiter/sanitize';
 import { ghReadRaw, listOrgRepos, readRepoReadme, repoDefaultBranch } from '../github-read';
 import { type JiraSite, fetchAllIssues } from '../jira-read';
+import { collectObservability } from '../observability';
 
 const execFileP = promisify(execFile);
 
@@ -120,7 +121,8 @@ async function main(): Promise<void> {
   const githubOrg = arg('github-org');
   const docsRepo = arg('docs-repo');
   const jiraUrl = arg('jira');
-  if (!githubOrg && !jiraUrl) throw new Error('Provide at least one source: --github-org and/or --jira.');
+  const observability = process.argv.includes('--observability');
+  if (!githubOrg && !jiraUrl && !observability) throw new Error('Provide at least one source: --github-org, --jira, and/or --observability.');
 
   const config = getConfig();
   const repos = createPostgresRepositories(databaseUrl);
@@ -130,19 +132,37 @@ async function main(): Promise<void> {
   // Resolve the target project by name (reuse if it exists), else create it.
   const existing = (await repos.projects.list()).find((p) => p.name.toLowerCase() === projectName.toLowerCase());
   const projectId: ProjectId = existing?.id ?? newProjectId();
-  if (!existing) await repos.projects.upsert(Project.parse({ id: projectId, name: projectName, classification: 'confidential', description: `Context ingested read-only from ${[githubOrg && 'GitHub', jiraUrl && 'Jira'].filter(Boolean).join(' + ')}.`, createdAt: nowIso() }));
+  if (!existing) await repos.projects.upsert(Project.parse({ id: projectId, name: projectName, classification: 'confidential', description: 'Context ingested read-only from external sources.', createdAt: nowIso() }));
 
-  // Refresh: drop existing knowledge so re-runs don't duplicate.
-  for (const doc of await repos.knowledge.listDocuments(projectId)) await repos.knowledge.deleteDocument(projectId, doc.id);
+  // Per-SOURCE refresh: only the sources being ingested are cleared, so refreshing
+  // observability (which changes often) never wipes the GitHub/Jira context.
+  const clearBySource = async (prefixes: string[]) => {
+    for (const doc of await repos.knowledge.listDocuments(projectId)) {
+      if (prefixes.some((p) => doc.citation.startsWith(p))) await repos.knowledge.deleteDocument(projectId, doc.id);
+    }
+  };
 
   const { store, stats } = makeStore(repos, sanitizer, projectId, dense);
-  if (githubOrg) await ingestGitHub(store, githubOrg, docsRepo);
+  if (githubOrg) {
+    await clearBySource(['github://']);
+    await ingestGitHub(store, githubOrg, docsRepo);
+  }
   if (jiraUrl) {
     const email = arg('jira-email');
     const tokenEnv = arg('jira-token-env');
     const token = tokenEnv ? process.env[tokenEnv] : undefined;
     if (!email || !token) throw new Error('--jira needs --jira-email and --jira-token-env <ENV_VAR> (token read from that env var).');
+    await clearBySource(['jira://']);
     await ingestJira(store, { baseUrl: jiraUrl, email, token }, arg('jira-jql'));
+  }
+  if (observability) {
+    await clearBySource(['sentry://', 'grafana://']);
+    const sources = await collectObservability(config);
+    if (sources.length === 0) console.log('  (no observability sources configured — set SENTRY_* / GRAFANA_* in env)');
+    for (const s of sources) {
+      console.log(`› observability "${s.source}": ${s.items.length} item(s) (read-only)…`);
+      for (const item of s.items) await store(item.title, item.content, `${s.source}://${item.title}`, 'other');
+    }
   }
 
   await repos.close();
