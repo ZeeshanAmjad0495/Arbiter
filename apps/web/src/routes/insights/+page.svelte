@@ -25,7 +25,7 @@
   <div class="head">
     <div>
       <h2>Quality Insights</h2>
-      <p class="sub">The project's quality trend line — aggregated from captured signals, never mutated.</p>
+      <p class="sub">How this project is trending — based on what your team has drafted, reviewed, and tested.</p>
     </div>
     <button class="ghost" type="button" onclick={load}>Refresh</button>
   </div>
@@ -36,13 +36,13 @@
     <div class="muted">Loading…</div>
   {:else}
     <section class="stats">
-      <div class="stat"><span class="label">Artifacts</span><b>{metrics.totals.artifacts}</b></div>
-      <div class="stat"><span class="label">Reviews decided</span><b>{metrics.review.decided}</b></div>
+      <div class="stat"><span class="label">Documents created</span><b>{metrics.totals.artifacts}</b></div>
+      <div class="stat"><span class="label">Reviews completed</span><b>{metrics.review.decided}</b></div>
       <div class="stat"><span class="label">Approval rate</span><b>{pct(metrics.review.approvalRate)}</b></div>
-      <div class="stat"><span class="label">Reviewer-edit rate</span><b>{pct(metrics.review.editRate)}</b></div>
-      <div class="stat"><span class="label">Median dwell</span><b>{dwell(metrics.review.medianDwellMs)}</b></div>
+      <div class="stat"><span class="label">How often reviewers edited</span><b>{pct(metrics.review.editRate)}</b></div>
+      <div class="stat"><span class="label">Typical review time</span><b>{dwell(metrics.review.medianDwellMs)}</b></div>
       <div class="stat" class:warn={(metrics.grounding.violationRate ?? 0) > 0}>
-        <span class="label">Grounding-violation rate</span><b>{pct(metrics.grounding.violationRate)}</b>
+        <span class="label">Unsupported-claim rate</span><b>{pct(metrics.grounding.violationRate)}</b>
       </div>
     </section>
 
@@ -56,7 +56,7 @@
         </ul>
       </section>
       <section class="card">
-        <h3>By risk tier</h3>
+        <h3>By risk level</h3>
         <ul class="kv">
           {#each Object.entries(metrics.byRiskTier) as [k, v]}
             <li><span>{humanize(k)}</span><b>{v}</b></li>
@@ -66,12 +66,12 @@
     </div>
 
     <section class="card">
-      <h3>By workflow</h3>
+      <h3>By tool</h3>
       {#if metrics.byWorkflow.length === 0}
         <div class="muted">No runs yet.</div>
       {:else}
         <table>
-          <thead><tr><th>Workflow</th><th>Runs</th><th>Approved</th><th>Rejected</th></tr></thead>
+          <thead><tr><th>Tool</th><th>Runs</th><th>Approved</th><th>Rejected</th></tr></thead>
           <tbody>
             {#each metrics.byWorkflow as w}
               <tr><td>{humanize(w.type)}</td><td>{w.count}</td><td>{w.approved}</td><td>{w.rejected}</td></tr>
@@ -82,9 +82,9 @@
     </section>
 
     <section class="card">
-      <h3>Test execution</h3>
+      <h3>Test runs</h3>
       {#if metrics.execution.runs === 0}
-        <div class="muted">No test runs yet — execute a Playwright or k6 test in the <a href="/runner">Test Runner</a>.</div>
+        <div class="muted">No test runs yet — run a browser or load test in the <a href="/runner">Test Runner</a>.</div>
       {:else}
         <ul class="kv">
           <li><span>Runs</span><b>{metrics.execution.runs}</b></li>
@@ -94,10 +94,10 @@
         </ul>
         {#if metrics.execution.byKind.length}
           <table style="margin-top:10px">
-            <thead><tr><th>Tool</th><th>Runs</th><th>Passed</th><th>Failed</th></tr></thead>
+            <thead><tr><th>Test type</th><th>Runs</th><th>Passed</th><th>Failed</th></tr></thead>
             <tbody>
               {#each metrics.execution.byKind as k}
-                <tr><td>{k.kind}</td><td>{k.runs}</td><td>{k.passed}</td><td>{k.failed}</td></tr>
+                <tr><td>{k.kind === 'playwright' ? 'Browser' : k.kind === 'k6' ? 'Load' : k.kind}</td><td>{k.runs}</td><td>{k.passed}</td><td>{k.failed}</td></tr>
               {/each}
             </tbody>
           </table>

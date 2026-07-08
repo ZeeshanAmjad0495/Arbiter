@@ -168,7 +168,7 @@ export type TestCase = z.infer<typeof TestCase>;
 const testCaseGenerator = define<TestCase>({
   id: 'test-case',
   label: 'Test Case Generator',
-  description: 'Generate a grounded, structured test case (with one-click Gherkin) from a requirement + context.',
+  description: 'Generate a source-checked, structured test case (with one-click Gherkin) from a requirement + context.',
   artifactType: 'test_case',
   promptVersion: 'test-case@v1',
   defaultRiskTier: 'medium',
@@ -494,7 +494,7 @@ export type NfrCompletenessAnalysis = z.infer<typeof NfrCompletenessAnalysis>;
 
 const nfrAnalyzer = define<NfrCompletenessAnalysis>({
   id: 'nfr-analyzer',
-  label: 'NFR Completeness Analyzer',
+  label: 'Non-Functional Requirements Checker',
   description:
     'Flag non-functional requirements that were never written down (performance, security, a11y, i18n, reliability, data integrity, and more) and draft a testable acceptance criterion for each gap.',
   artifactType: 'nfr_completeness_analysis',
@@ -894,7 +894,7 @@ export type TestPlan = z.infer<typeof TestPlan>;
 const testPlan = define<TestPlan>({
   id: 'test-plan',
   label: 'Test Plan Generator',
-  description: 'Draft an executable test plan whose every scenario traces to a strategy risk area or requirement id (grounded).',
+  description: 'Draft an executable test plan whose every scenario traces to a strategy risk area or requirement id (source-checked).',
   artifactType: 'test_plan',
   promptVersion: 'test-plan@v1',
   defaultRiskTier: 'medium',
@@ -963,7 +963,7 @@ export type TraceabilityMatrix = z.infer<typeof TraceabilityMatrix>;
 const traceabilityMatrix = define<TraceabilityMatrix>({
   id: 'traceability-matrix',
   label: 'Requirements Traceability & Coverage Matrix',
-  description: 'Link requirement ids to covering test ids, expose uncovered requirements and orphan tests — id-aware and grounded.',
+  description: 'Link requirement ids to covering test ids, expose uncovered requirements and orphan tests — id-aware and source-checked.',
   artifactType: 'traceability_matrix',
   promptVersion: 'traceability-matrix@v1',
   defaultRiskTier: 'medium',
@@ -1031,7 +1031,7 @@ export type ComplianceMapping = z.infer<typeof ComplianceMapping>;
 const complianceMapping = define<ComplianceMapping>({
   id: 'compliance-mapping',
   label: 'Compliance Control-Mapping & Evidence Pack',
-  description: 'Map framework controls (HIPAA/SOC 2) to a feature: satisfied vs. gap, required evidence, and verification — control ids grounded, human-attested.',
+  description: 'Map framework controls (HIPAA/SOC 2) to a feature: satisfied vs. gap, required evidence, and verification — control ids source-checked, human-attested.',
   artifactType: 'compliance_mapping',
   promptVersion: 'compliance-mapping@v1',
   defaultRiskTier: 'high',
@@ -1099,7 +1099,7 @@ export type CiFailureTriage = z.infer<typeof CiFailureTriage>;
 const ciFailureTriage = define<CiFailureTriage>({
   id: 'ci-failure-triage',
   label: 'CI Failure Triage',
-  description: 'Classify a CI failure (product bug / flaky / infra / dependency / config) and draft ranked root-cause hypotheses grounded in the log.',
+  description: 'Classify a CI failure (product bug / flaky / infra / dependency / config) and draft ranked root-cause hypotheses source-checked in the log.',
   artifactType: 'ci_failure_triage',
   promptVersion: 'ci-failure-triage@v1',
   defaultRiskTier: 'medium',
@@ -1297,7 +1297,7 @@ export type ApiTestSuite = z.infer<typeof ApiTestSuite>;
 const apiTestGenerator = define<ApiTestSuite>({
   id: 'api-test-generator',
   label: 'API Test Generator',
-  description: 'Generate a grounded API test suite (happy/negative/boundary/auth/contract) from an endpoint spec, with status codes and response assertions.',
+  description: 'Generate a source-checked API test suite (happy/negative/boundary/auth/contract) from an endpoint spec, with status codes and response assertions.',
   artifactType: 'api_test_suite',
   promptVersion: 'api-test-generator@v1',
   defaultRiskTier: 'medium',
@@ -1355,7 +1355,7 @@ export type ContractDrift = z.infer<typeof ContractDrift>;
 const contractDrift = define<ContractDrift>({
   id: 'contract-drift',
   label: 'Contract Drift Analyzer',
-  description: 'Diff two API contract versions into breaking vs non-breaking changes with consumer impact and migration actions — grounded in the contracts.',
+  description: 'Diff two API contract versions into breaking vs non-breaking changes with consumer impact and migration actions — source-checked in the contracts.',
   artifactType: 'contract_drift',
   promptVersion: 'contract-drift@v1',
   defaultRiskTier: 'high',
@@ -1594,7 +1594,7 @@ export type CrossReqInconsistency = z.infer<typeof CrossReqInconsistency>;
 const crossReqInconsistency = define<CrossReqInconsistency>({
   id: 'cross-req-inconsistency',
   label: 'Cross-Requirement Inconsistency Checker',
-  description: 'Find conflicts between requirements — each inconsistency must cite TWO requirement ids that exist in context (grounded cite-two-sources guard).',
+  description: 'Find conflicts between requirements — each inconsistency must cite TWO requirement ids that exist in context (source-checked cite-two-sources guard).',
   artifactType: 'cross_req_inconsistency',
   promptVersion: 'cross-req-inconsistency@v1',
   defaultRiskTier: 'medium',
@@ -1660,7 +1660,7 @@ export type SpecChangeImpact = z.infer<typeof SpecChangeImpact>;
 const specChangeImpact = define<SpecChangeImpact>({
   id: 'spec-change-impact',
   label: 'Spec-Change Impact Analyzer',
-  description: 'Given an old→new spec change, enumerate impacted requirements/tests/endpoints (breaking/behavioral/additive) grounded in context, with follow-up actions.',
+  description: 'Given an old→new spec change, enumerate impacted requirements/tests/endpoints (breaking/behavioral/additive) source-checked in context, with follow-up actions.',
   artifactType: 'spec_change_impact',
   promptVersion: 'spec-change-impact@v1',
   defaultRiskTier: 'high',
@@ -1765,7 +1765,7 @@ export type RegressionImpact = z.infer<typeof RegressionImpact>;
 const regressionImpact = define<RegressionImpact>({
   id: 'regression-impact',
   label: 'Regression Impact Advisor',
-  description: 'Given a change, advise which existing tests to re-run (grounded test ids) vs. safely skip, with a risk level.',
+  description: 'Given a change, advise which existing tests to re-run (source-checked test ids) vs. safely skip, with a risk level.',
   artifactType: 'regression_impact',
   promptVersion: 'regression-impact@v1',
   defaultRiskTier: 'medium',
@@ -1820,7 +1820,7 @@ export type DataQualityAssertions = z.infer<typeof DataQualityAssertions>;
 const dataQualityAssertions = define<DataQualityAssertions>({
   id: 'data-quality-assertions',
   label: 'Data-Quality / DB-Assertion Drafter',
-  description: 'Draft data-quality assertions (not-null, unique, referential integrity, range, freshness) for a schema — columns grounded.',
+  description: 'Draft data-quality assertions (not-null, unique, referential integrity, range, freshness) for a schema — columns source-checked.',
   artifactType: 'data_quality_assertions',
   promptVersion: 'data-quality-assertions@v1',
   defaultRiskTier: 'medium',
@@ -2101,7 +2101,7 @@ export type PerformanceTestPlan = z.infer<typeof PerformanceTestPlan>;
 const performanceTestPlan = define<PerformanceTestPlan>({
   id: 'performance-test-plan',
   label: 'Performance Test-Plan Drafter',
-  description: 'Draft a performance test plan (workload model, SLOs, load/stress/soak/spike scenarios with measurable pass criteria) grounded in the endpoint.',
+  description: 'Draft a performance test plan (workload model, SLOs, load/stress/soak/spike scenarios with measurable pass criteria) source-checked in the endpoint.',
   artifactType: 'performance_test_plan',
   promptVersion: 'performance-test-plan@v1',
   defaultRiskTier: 'high',
@@ -2297,7 +2297,7 @@ export type MutationSurvivors = z.infer<typeof MutationSurvivors>;
 const mutationSurvivors = define<MutationSurvivors>({
   id: 'mutation-survivors',
   label: 'Mutation Survivor Explainer',
-  description: 'Explain surviving mutants as concrete test-coverage gaps and the exact test that would kill each — mutant ids grounded.',
+  description: 'Explain surviving mutants as concrete test-coverage gaps and the exact test that would kill each — mutant ids source-checked.',
   artifactType: 'mutation_survivors',
   promptVersion: 'mutation-survivors@v1',
   defaultRiskTier: 'medium',
@@ -2340,7 +2340,7 @@ export type FeatureFlagMatrix = z.infer<typeof FeatureFlagMatrix>;
 const featureFlagMatrix = define<FeatureFlagMatrix>({
   id: 'feature-flag-matrix',
   label: 'Feature-Flag Test-Matrix + Stale-Flag Finder',
-  description: 'Select the behavior-changing flag combinations to test and flag stale/dead flags — flag names grounded.',
+  description: 'Select the behavior-changing flag combinations to test and flag stale/dead flags — flag names source-checked.',
   artifactType: 'feature_flag_matrix',
   promptVersion: 'feature-flag-matrix@v1',
   defaultRiskTier: 'medium',

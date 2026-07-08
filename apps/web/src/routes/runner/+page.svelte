@@ -72,6 +72,7 @@ export default function () {
 
   const pct = (e: TestExecution) => (e.summary.total ? Math.round((e.summary.passed / e.summary.total) * 100) : 0);
   const when = (iso: string) => new Date(iso).toLocaleString();
+  const modeLabel = (m: string) => (m === 'real' ? 'live' : 'demo');
 
   onMount(load);
 </script>
@@ -80,11 +81,11 @@ export default function () {
   <div class="head">
     <h2>Test Runner</h2>
     <p class="sub">
-      Execute an Arbiter-authored Playwright or k6 test with the real tool and read results back into your quality metrics.
+      Run a browser test (Playwright) or a load test (k6) and see the results feed into your quality insights.
       {#if runnerMode === 'offline'}
-        <span class="mode-tag" title="Set ARBITER_RUNNER=real to spawn the real binary">Offline mode — results are simulated deterministically.</span>
+        <span class="mode-tag" title="Ask an admin to enable live runs (ARBITER_RUNNER=real)">Demo mode — results are simulated.</span>
       {:else if runnerMode === 'real'}
-        <span class="mode-tag real">Real mode — spawning the actual binary.</span>
+        <span class="mode-tag real">Live mode — running the real tool.</span>
       {/if}
     </p>
   </div>
@@ -95,8 +96,8 @@ export default function () {
     <!-- Compose + run -->
     <section class="card">
       <div class="tabs">
-        <button class:active={kind === 'playwright'} onclick={() => (kind = 'playwright')}>Playwright</button>
-        <button class:active={kind === 'k6'} onclick={() => (kind = 'k6')}>k6</button>
+        <button class:active={kind === 'playwright'} onclick={() => (kind = 'playwright')}>Browser test (Playwright)</button>
+        <button class:active={kind === 'k6'} onclick={() => (kind = 'k6')}>Load test (k6)</button>
       </div>
       <label class="field">
         <span>Run name <span class="opt">optional</span></span>
@@ -117,8 +118,8 @@ export default function () {
         <div class="banner {result.status === 'passed' ? 'good' : result.status === 'failed' ? 'bad' : 'warn'}" style="margin-top:16px">
           {#if result.status === 'passed'}<Icon name="validate" size={16} /> All checks passed{/if}
           {#if result.status === 'failed'}{result.summary.failed} of {result.summary.total} failed{/if}
-          {#if result.status === 'error'}Runner error — {result.error ?? 'no result produced'}{/if}
-          <span class="mode-badge {result.mode}">{result.mode}</span>
+          {#if result.status === 'error'}Couldn't run — {result.error ?? 'no result produced'}{/if}
+          <span class="mode-badge {result.mode}">{modeLabel(result.mode)}</span>
         </div>
         {#if result.cases.length}
           <ul class="cases">
@@ -149,7 +150,7 @@ export default function () {
                 <b>{e.name}</b>
                 <span class="hsub">{e.kind} · {e.summary.passed}/{e.summary.total} passed · {pct(e)}% · {when(e.createdAt)}</span>
               </div>
-              <span class="mode-badge {e.mode}">{e.mode}</span>
+              <span class="mode-badge {e.mode}">{modeLabel(e.mode)}</span>
             </li>
           {/each}
         </ul>

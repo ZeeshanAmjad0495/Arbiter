@@ -48,51 +48,51 @@
 
 <section class="wrap">
   <div class="head">
-    <h2>Re-identify &amp; retention</h2>
+    <h2>Unmask data &amp; cleanup</h2>
     <p class="sub">
-      Rehydrate sanitizer placeholders back to real values for an approved artifact you're handing off, and control how long the encrypted
-      de-mask map is kept. <b>Admin-only</b> · every action is tenant-scoped and audited by count (the PII itself is never logged).
+      Reveal the real values behind the hidden placeholders in an approved document you're handing off, and control how long those hidden
+      values are kept. <b>Admins only</b> · limited to this project, and logged by count only (the real values are never written to the log).
     </p>
   </div>
 
   <div class="cols">
     <section class="card">
-      <h3>Re-identify an artifact</h3>
+      <h3>Reveal real values</h3>
       <p class="muted">
-        Paste text containing placeholders like <code>[EMAIL_ADDRESS_1]</code>. Only placeholders minted in <b>this project</b> resolve;
-        redacted credentials (<code>[…_REDACTED]</code>) are never stored and stay masked.
+        Paste text that contains hidden placeholders like <code>[EMAIL_ADDRESS_1]</code>. Only placeholders created in <b>this project</b> can be
+        revealed; passwords and keys (<code>[…_REDACTED]</code>) are never stored, so they stay hidden.
       </p>
       <label class="field">
-        <span>Masked text</span>
+        <span>Text with hidden values</span>
         <textarea rows="9" class="mono-in" placeholder={'Contact [EMAIL_ADDRESS_1] regarding member [US_SSN_1]…'} bind:value={masked}></textarea>
       </label>
       <button class="primary" style="width:auto" disabled={resolving || !masked.trim()} onclick={reidentify}>
-        <Icon name="demask" size={15} /> {resolving ? 'Resolving…' : 'Re-identify'}
+        <Icon name="demask" size={15} /> {resolving ? 'Revealing…' : 'Reveal values'}
       </button>
       {#if resolveError}<p class="error" role="alert">{resolveError}</p>{/if}
       {#if resolved}
         <div class="banner {resolved.unresolved > 0 ? 'warn' : 'good'}" style="margin-top:14px">
-          Resolved {resolved.resolved} placeholder{resolved.resolved === 1 ? '' : 's'}{resolved.unresolved > 0 ? ` · ${resolved.unresolved} left masked (unknown / other project)` : ''}.
+          Revealed {resolved.resolved} value{resolved.resolved === 1 ? '' : 's'}{resolved.unresolved > 0 ? ` · ${resolved.unresolved} stayed hidden (unknown or from another project)` : ''}.
         </div>
         <label class="field" style="margin-top:12px">
-          <span>Re-identified text — contains real PII, handle per policy</span>
+          <span>Revealed text — contains real personal data, handle per your policy</span>
           <textarea rows="9" class="mono-in danger" readonly value={resolved.text}></textarea>
         </label>
       {/if}
     </section>
 
     <section class="card">
-      <h3>Retention</h3>
-      <p class="muted">Permanently drop this project's mappings older than a cutoff. Point a scheduler at this to enforce retention automatically.</p>
+      <h3>Cleanup</h3>
+      <p class="muted">Permanently delete this project's hidden values once they're older than a cutoff. A scheduler can run this automatically.</p>
       <label class="field">
-        <span>Delete mappings older than</span>
+        <span>Delete hidden values older than</span>
         <div class="row">
           <input type="number" min="1" max="365" bind:value={days} style="width:90px" />
           <span class="unit">days</span>
         </div>
       </label>
       <button class="danger-btn" disabled={purging} onclick={() => { purgeError = null; confirmOpen = true; }}>
-        <Icon name="trash" size={14} /> Purge old mappings
+        <Icon name="trash" size={14} /> Delete old values
       </button>
       {#if purgeMsg}<div class="banner good" style="margin-top:12px">{purgeMsg}</div>{/if}
     </section>
@@ -101,9 +101,9 @@
 
 {#if confirmOpen}
   <ConfirmDialog
-    title="Purge de-mask mappings"
-    message={`Permanently delete this project's de-mask mappings older than ${days} day(s). Re-identification of those placeholders will no longer be possible.`}
-    confirmLabel="Purge old mappings"
+    title="Delete old hidden values"
+    message={`Permanently delete this project's hidden values older than ${days} day(s). After this, those placeholders can no longer be revealed.`}
+    confirmLabel="Delete old values"
     busy={purging}
     error={purgeError}
     oncancel={() => (confirmOpen = false)}

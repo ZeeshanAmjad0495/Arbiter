@@ -61,30 +61,50 @@
       items: [
         { href: '/review', label: 'Review Queue', ico: 'review' },
         { href: '/runner', label: 'Test Runner', ico: 'runner' },
-        { href: '/knowledge', label: 'Knowledge', ico: 'knowledge' },
-        { href: '/graph', label: 'Knowledge Graph', ico: 'graph' },
-        { href: '/validate', label: 'Schema Validator', ico: 'validate' },
+        { href: '/knowledge', label: 'Reference Docs', ico: 'knowledge' },
+        { href: '/graph', label: 'Concept Map', ico: 'graph' },
+        { href: '/validate', label: 'Data Format Checker', ico: 'validate' },
       ],
     },
     {
       group: 'Insights',
       items: [
         { href: '/insights', label: 'Insights', ico: 'insights' },
-        { href: '/prompts', label: 'Prompt Library', ico: 'prompts' },
-        { href: '/demask', label: 'Re-identify', ico: 'demask', admin: true },
+        { href: '/prompts', label: 'Template Library', ico: 'prompts' },
+        { href: '/demask', label: 'Unmask Data', ico: 'demask', admin: true },
       ],
     },
   ];
 
   const STATUS_LABELS: Record<string, string> = {
     persistence: 'Storage',
-    sanitizer: 'PII sanitizer',
-    llm: 'Model provider',
-    telemetry: 'Tracing',
-    demask: 'De-mask store',
-    demaskDurable: 'De-mask durable',
+    sanitizer: 'Privacy filter',
+    llm: 'AI model',
+    telemetry: 'Activity log',
+    demask: 'Sensitive-data vault',
+    demaskDurable: 'Vault saved to storage',
     runner: 'Test runner',
   };
+  // Show friendly words instead of raw mode codes (postgres/kimi/regex…).
+  const STATUS_VALUES: Record<string, string> = {
+    postgres: 'Database',
+    memory: 'Temporary',
+    presidio: 'Advanced',
+    regex: 'Standard',
+    anthropic: 'Connected',
+    kimi: 'Connected',
+    litellm: 'Connected',
+    stub: 'Demo mode',
+    otlp: 'On',
+    noop: 'Off',
+    encrypted: 'Encrypted',
+    ephemeral: 'Temporary',
+    real: 'Live',
+    offline: 'Demo mode',
+    true: 'Yes',
+    false: 'No',
+  };
+  const statusValue = (v: unknown): string => STATUS_VALUES[String(v)] ?? String(v);
   const liveModes = new Set(['postgres', 'presidio', 'anthropic', 'kimi', 'litellm', 'otlp', 'encrypted', 'true', 'real']);
 
   const activePath = $derived($page.url.pathname);
@@ -275,7 +295,7 @@
                 {#each Object.entries(status.modes) as [key, value]}
                   <div class="status-row">
                     <span class="lbl">{STATUS_LABELS[key] ?? key}</span>
-                    <span class="status-val" class:live={liveModes.has(String(value))}>{String(value)}</span>
+                    <span class="status-val" class:live={liveModes.has(String(value))}>{statusValue(value)}</span>
                   </div>
                 {/each}
               </div>
@@ -314,7 +334,7 @@
 {/if}
 
 {#if showCreate}
-  <Modal title="New project" subtitle="Set up a fresh, isolated project — its runs, review queue, knowledge, schemas, and metrics are its own." onclose={() => (showCreate = false)}>
+  <Modal title="New project" subtitle="Set up a fresh, separate project — its documents, reviews, reference docs, formats, and insights stay its own." onclose={() => (showCreate = false)}>
     <div class="form-grid">
       <label class="field">
         <span>Project name *</span>
@@ -349,12 +369,12 @@
     </div>
 
     <label class="field">
-      <span>Initial context / knowledge <span class="opt">optional — seeded into this project's knowledge</span></span>
-      <textarea rows="3" placeholder="Paste a schema, spec, or notes to ground this project…" bind:value={newContext}></textarea>
+      <span>Background info <span class="opt">optional — added to this project's reference docs</span></span>
+      <textarea rows="3" placeholder="Paste a spec, standard, or notes so the AI has context for this project…" bind:value={newContext}></textarea>
     </label>
 
     <div class="field">
-      <span>JSON Schemas <span class="opt">optional — saved for the Schema Validator</span></span>
+      <span>Data formats <span class="opt">optional — saved for the Data Format Checker</span></span>
       {#each newSchemas as s, i}
         <div class="schema-row">
           <input type="text" placeholder="Schema name (e.g. Order v2)" bind:value={s.name} />

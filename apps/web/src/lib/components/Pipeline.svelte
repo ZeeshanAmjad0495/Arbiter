@@ -10,11 +10,11 @@
     const blocked = outcome.sanitization.blocked;
     const groundingBad = outcome.grounding.blockedExport;
     return [
-      { key: 'Sanitize', cls: blocked ? 'bad' : 'ok' },
-      { key: 'Ground', cls: blocked ? 'skip' : 'ok' },
-      { key: 'Generate', cls: blocked ? 'skip' : outcome.output ? 'ok' : 'skip' },
-      { key: 'Validate', cls: blocked ? 'skip' : groundingBad ? 'warn' : 'ok' },
-      { key: 'Gate', cls: reviewCls(outcome.review.decision) },
+      { key: 'Privacy check', cls: blocked ? 'bad' : 'ok' },
+      { key: 'Gather sources', cls: blocked ? 'skip' : 'ok' },
+      { key: 'AI draft', cls: blocked ? 'skip' : outcome.output ? 'ok' : 'skip' },
+      { key: 'Fact-check', cls: blocked ? 'skip' : groundingBad ? 'warn' : 'ok' },
+      { key: 'Review', cls: reviewCls(outcome.review.decision) },
     ];
   });
 </script>

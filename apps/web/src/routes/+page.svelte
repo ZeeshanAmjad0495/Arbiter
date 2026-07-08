@@ -44,11 +44,11 @@
   let reasoning = $state('');
 
   const STAGE_LABEL: Record<string, string> = {
-    sanitize: 'Sanitizing input',
-    ground: 'Grounding context',
-    generate: 'Generating (model thinking…)',
-    validate: 'Validating grounding',
-    gate: 'Applying review gate',
+    sanitize: 'Checking for sensitive info',
+    ground: 'Finding relevant sources',
+    generate: 'Writing draft (AI thinking…)',
+    validate: 'Checking claims against sources',
+    gate: 'Final review',
   };
   const STAGES = ['sanitize', 'ground', 'generate', 'validate', 'gate'];
 
@@ -193,17 +193,17 @@
   <div class="catalog-head">
     <div>
       <h2>{searching ? 'Search results' : activeCategory.label}</h2>
-      <p class="sub">{searching ? `${matchCount} matching workflow${matchCount === 1 ? '' : 's'}` : activeCategory.blurb}</p>
+      <p class="sub">{searching ? `${matchCount} matching tool${matchCount === 1 ? '' : 's'}` : activeCategory.blurb}</p>
     </div>
     <div class="search">
       <Icon name="search" size={16} class="op5" />
-      <input type="search" placeholder="Search all workflows…" bind:value={search} aria-label="Search workflows" />
+      <input type="search" placeholder="Search all tools…" bind:value={search} aria-label="Search tools" />
     </div>
   </div>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if workflows.length === 0 && !error}<div class="empty">Loading workflows…</div>{/if}
-  {#if searching && matchCount === 0}<div class="empty">No workflows match “{search}”.</div>{/if}
+  {#if workflows.length === 0 && !error}<div class="empty">Loading tools…</div>{/if}
+  {#if searching && matchCount === 0}<div class="empty">No tools match “{search}”.</div>{/if}
 
   {#each groups as g}
     <section class="cat-group">
@@ -226,7 +226,7 @@
 {:else}
   <!-- ===== Run view ===== -->
   <div class="runview-top">
-    <button class="back-link" onclick={backToCatalog}><Icon name="back" size={15} /> Workflows</button>
+    <button class="back-link" onclick={backToCatalog}><Icon name="back" size={15} /> All tools</button>
     <div style="display:flex;align-items:center;gap:8px">
       <span aria-hidden="true" style="display:inline-flex"><Icon name={categoryOf(selected.id)} size={18} /></span>
       <strong style="font-size:16px">{selected.label}</strong>
@@ -270,19 +270,19 @@
 
       <div class="controls">
         <label class="field inline">
-          <span>Risk tier</span>
+          <span>Risk level</span>
           <select bind:value={riskTier}>
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
           </select>
         </label>
-        <label class="check"><input type="checkbox" bind:checked={autoApprove} /> Auto-approve (demo)</label>
-        <label class="check" title="Retrieve relevant chunks from this project's Knowledge into the context (RAG)">
-          <input type="checkbox" bind:checked={useKnowledge} /> Use project knowledge
+        <label class="check" title="Skip human review — for demos only"><input type="checkbox" bind:checked={autoApprove} /> Skip review (demo)</label>
+        <label class="check" title="Let the AI pull in relevant details from this project's reference docs">
+          <input type="checkbox" bind:checked={useKnowledge} /> Use reference docs
         </label>
-        <label class="check" title="Add connected entities from the project's Knowledge Graph (GraphRAG)">
-          <input type="checkbox" bind:checked={useGraph} /> Use graph
+        <label class="check" title="Also pull in related concepts from this project's concept map">
+          <input type="checkbox" bind:checked={useGraph} /> Use concept map
         </label>
         {#if selected.ui.outputView === 'test_case'}
           <label class="check">

@@ -84,8 +84,8 @@
   <section class="panel input-panel">
     <h2>Review Queue <span class="tag muted">{items.length}</span></h2>
     <p class="hint">
-      Artifacts awaiting human approval (run a workflow with <b>Auto-approve</b> off to populate this). High and
-      medium risk require pre-approval. Your edits are captured as a diff — the feedback-flywheel signal.
+      Documents waiting for your approval (create one with <b>Skip review</b> off to add items here). High- and
+      medium-risk items need sign-off before they're used. Any edits you make are saved as feedback that improves future drafts.
     </p>
     {#if loadingList}
       <p class="hint">Loading…</p>
@@ -113,13 +113,13 @@
     {#if artifact}
       <article class="card">
         <h3>
-          Review artifact <span class="tag muted">{artifact.type}</span>
+          Review document <span class="tag muted">{artifact.type}</span>
           <span class="tag muted">{artifact.model ?? ''}</span>
           <span class="badge {artifact.riskTier === 'high' ? 'rejected' : artifact.riskTier === 'medium' ? 'needs_changes' : 'approved'}">
             {artifact.riskTier} risk
           </span>
         </h3>
-        <p class="hint">Edit the JSON below if needed, then choose a decision. Edits are diffed and stored.</p>
+        <p class="hint">Edit the content below if needed, then choose a decision. Your changes are saved as feedback.</p>
         <textarea class="json-edit mono" rows="16" bind:value={editedJson}></textarea>
         {#if jsonError}<p class="error">{jsonError}</p>{/if}
         <div class="review-actions">
@@ -146,11 +146,11 @@
       {/if}
     {:else if lastDiff}
       <article class="card">
-        <h3>Captured edit-diff</h3>
+        <h3>Your saved edits</h3>
         <pre class="mono">{lastDiff}</pre>
       </article>
     {:else}
-      <div class="empty"><p>Select an artifact from the queue to review it.</p></div>
+      <div class="empty"><p>Pick a document from the queue to review it.</p></div>
     {/if}
   </section>
 </section>

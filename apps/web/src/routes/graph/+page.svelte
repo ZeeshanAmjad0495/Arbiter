@@ -64,11 +64,11 @@
 <section class="wrap">
   <div class="head">
     <div>
-      <h2>Knowledge Graph</h2>
-      <p class="sub">Entities and relationships extracted from this project's knowledge. GraphRAG expands connected entities into a run's context when "Use graph" is on.</p>
+      <h2>Concept Map</h2>
+      <p class="sub">The key terms in your reference docs and how they connect. Turn on “Use concept map” when creating a document to pull in related terms automatically.</p>
     </div>
     <button class="primary" style="width:auto" disabled={building} onclick={rebuild}>
-      <Icon name="refresh" size={15} /> {building ? 'Building…' : graph.nodes.length ? 'Rebuild graph' : 'Build graph'}
+      <Icon name="refresh" size={15} /> {building ? 'Building…' : graph.nodes.length ? 'Rebuild map' : 'Build map'}
     </button>
   </div>
 
@@ -76,18 +76,18 @@
 
   {#if graph.nodes.length === 0}
     <div class="empty">
-      <p>No graph yet.</p>
-      <p style="font-size:13px">Add documents in <a href="/knowledge">Knowledge</a>, then build the graph to extract entities and relationships.</p>
+      <p>No concept map yet.</p>
+      <p style="font-size:13px">Add documents in <a href="/knowledge">Reference Docs</a>, then build the map to pull out the key terms and how they connect.</p>
     </div>
   {:else}
     <div class="stats">
-      <div class="stat"><span class="label">Entities</span><b>{graph.nodes.length}</b></div>
-      <div class="stat"><span class="label">Relationships</span><b>{graph.edges.length}</b></div>
-      <div class="stat"><span class="label">Types</span><b>{byType.length}</b></div>
+      <div class="stat"><span class="label">Terms</span><b>{graph.nodes.length}</b></div>
+      <div class="stat"><span class="label">Connections</span><b>{graph.edges.length}</b></div>
+      <div class="stat"><span class="label">Categories</span><b>{byType.length}</b></div>
     </div>
 
     <div class="viz card">
-      <svg viewBox="0 0 {W} {H}" role="img" aria-label="Knowledge graph visualization" style="width:100%;height:auto">
+      <svg viewBox="0 0 {W} {H}" role="img" aria-label="Concept map visualization" style="width:100%;height:auto">
         {#each shownEdges as e}
           {@const a = pos.get(e.source)}
           {@const b = pos.get(e.target)}

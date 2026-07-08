@@ -25,7 +25,7 @@
       schemas = await listSchemas();
       if (!selectedId && schemas.length) selectedId = schemas[0].id;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load schemas';
+      error = e instanceof Error ? e.message : 'Failed to load formats';
     }
   }
 
@@ -90,8 +90,8 @@
 
 <section class="wrap">
   <div class="head">
-    <h2>Schema Validator</h2>
-    <p class="sub">Save this project's JSON Schemas once, then validate any data file against them — errors are reported by path.</p>
+    <h2>Data Format Checker</h2>
+    <p class="sub">Save the expected format for your data once, then check any data file against it. Problems point to the exact field.</p>
   </div>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -99,33 +99,33 @@
   <div class="cols">
     <!-- Validate -->
     <section class="card">
-      <h3>Validate data</h3>
+      <h3>Check data</h3>
       {#if schemas.length === 0}
-        <p class="muted">Add a schema first, then validate data against it.</p>
+        <p class="muted">Add a format first, then check data against it.</p>
       {:else}
         <label class="field">
-          <span>Schema</span>
+          <span>Format</span>
           <select bind:value={selectedId}>
             {#each schemas as s}<option value={s.id}>{s.name}</option>{/each}
           </select>
         </label>
         <label class="field">
-          <span>Data (JSON)</span>
+          <span>Data to check</span>
           <textarea rows="8" class="mono-in" placeholder={'{ "id": "SYN-1", "order_total": 42 }'} bind:value={dataText}></textarea>
         </label>
         <div class="row">
           <input type="file" accept=".json" bind:this={dataFileInput} onchange={onDataFile} hidden />
           <button class="ghost small" style="margin:0" onclick={() => dataFileInput?.click()}><Icon name="upload" size={14} /> Upload file</button>
           <button class="primary" style="width:auto" disabled={validating || !selectedId || !dataText.trim()} onclick={validate}>
-            {validating ? 'Validating…' : 'Validate'}
+            {validating ? 'Checking…' : 'Check'}
           </button>
         </div>
 
         {#if result}
           {#if result.valid}
-            <div class="banner good" style="margin-top:14px"><Icon name="validate" size={16} /> Valid — the data conforms to the schema.</div>
+            <div class="banner good" style="margin-top:14px"><Icon name="validate" size={16} /> Looks good — the data matches the expected format.</div>
           {:else}
-            <div class="banner bad" style="margin-top:14px">Invalid — {result.errors.length} error{result.errors.length === 1 ? '' : 's'}.</div>
+            <div class="banner bad" style="margin-top:14px">{result.errors.length} problem{result.errors.length === 1 ? '' : 's'} found.</div>
             <ul class="errs">
               {#each result.errors as e}
                 <li><code>{e.path}</code> <span>{e.message}</span> <span class="kw">{e.keyword}</span></li>
@@ -138,23 +138,23 @@
 
     <!-- Schemas -->
     <section class="card">
-      <h3>Saved schemas ({schemas.length})</h3>
+      <h3>Saved formats ({schemas.length})</h3>
       {#if schemas.length === 0}
-        <p class="muted">No schemas yet.</p>
+        <p class="muted">No formats yet.</p>
       {:else}
         <ul class="list">
           {#each schemas as s}
-            <li><b>{s.name}</b><button class="ghost small" style="margin:0" aria-label="Delete schema" onclick={() => { deleteError = null; pendingDelete = s; }}><Icon name="trash" size={14} /></button></li>
+            <li><b>{s.name}</b><button class="ghost small" style="margin:0" aria-label="Delete format" onclick={() => { deleteError = null; pendingDelete = s; }}><Icon name="trash" size={14} /></button></li>
           {/each}
         </ul>
       {/if}
 
       <div class="add">
-        <h4>Add a schema</h4>
-        <input class="in" placeholder="Schema name (e.g. Order v2)" bind:value={newName} />
+        <h4>Add a format</h4>
+        <input class="in" placeholder="Format name (e.g. Order v2)" bind:value={newName} />
         <textarea rows="6" class="in mono-in" placeholder={'{ "type": "object", "required": ["id"] }'} bind:value={newSchema}></textarea>
         <button class="ghost small" style="margin:0;display:inline-flex;align-items:center;gap:6px" disabled={adding || !newName.trim() || !newSchema.trim()} onclick={add}>
-          <Icon name="plus" size={14} /> {adding ? 'Saving…' : 'Save schema'}
+          <Icon name="plus" size={14} /> {adding ? 'Saving…' : 'Save format'}
         </button>
       </div>
     </section>
@@ -163,8 +163,8 @@
 
 {#if pendingDelete}
   <ConfirmDialog
-    title="Delete schema"
-    message={`Permanently delete the schema "${pendingDelete.name}". Data files can no longer be validated against it.`}
+    title="Delete format"
+    message={`Permanently delete the format "${pendingDelete.name}". Data can no longer be checked against it.`}
     busy={deleting}
     error={deleteError}
     oncancel={() => (pendingDelete = null)}
