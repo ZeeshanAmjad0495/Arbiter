@@ -38,6 +38,48 @@ const MAX_NODES = 600;
 const MAX_EDGES = 2500;
 const TERM_MIN_MENTIONS = 2; // noisy 'term' entities must recur to become nodes
 
+/**
+ * Capitalized function words the `term` pattern catches at sentence starts
+ * ("This ticket…", "When invalid…"). They recur constantly, so the mention
+ * threshold does NOT filter them — they'd otherwise rank as the largest,
+ * most-prominent nodes and drown out real concepts. Denylisted at extraction
+ * so they never become nodes OR edges. Lowercase; only ≥4-letter words matter
+ * (the pattern requires 4+ letters).
+ */
+const TERM_STOPWORDS = new Set([
+  'this', 'that', 'these', 'those', 'then', 'than', 'there', 'their', 'them', 'they',
+  'from', 'with', 'when', 'what', 'whom', 'whose', 'which', 'while', 'where', 'will',
+  'would', 'could', 'should', 'shall', 'must', 'have', 'having', 'been', 'being', 'does',
+  'done', 'into', 'onto', 'over', 'under', 'above', 'below', 'after', 'before', 'because',
+  'however', 'therefore', 'thus', 'also', 'only', 'such', 'some', 'each', 'every', 'both',
+  'either', 'neither', 'other', 'another', 'more', 'most', 'less', 'least', 'very', 'just',
+  'even', 'still', 'here', 'your', 'yours', 'ours', 'mine', 'about', 'against', 'between',
+  'during', 'without', 'within', 'upon', 'once', 'note', 'notes', 'none', 'else', 'like',
+  'unless', 'until', 'since', 'though', 'although', 'whether', 'again', 'ensure', 'given',
+  'please', 'thanks', 'thank', 'hello', 'regards',
+  // QA / requirements-doc boilerplate: structural labels, not domain concepts. Arbiter's
+  // inputs are tickets, specs and Gherkin, so these recur everywhere and drown out real terms.
+  'summary', 'description', 'steps', 'step', 'scenario', 'scenarios', 'feature', 'background',
+  'precondition', 'preconditions', 'acceptance', 'criteria', 'expected', 'actual', 'reproduce',
+  'example', 'examples', 'overview', 'details', 'context', 'goal', 'goals',
+  // Issue-tracker structure: field labels, workflow states, priority values and issue types.
+  // Repeated on every exported ticket, so they dominate by mention count and manufacture
+  // junk two-word terms ("Medium Update", "Type Status"). Universal to Jira/GitLab/etc.
+  'status', 'type', 'priority', 'label', 'labels', 'comment', 'comments', 'assignee', 'reporter',
+  'resolution', 'watcher', 'watchers', 'component', 'components', 'attachment', 'attachments',
+  'sprint', 'epic', 'story', 'task', 'subtask', 'ticket', 'tickets', 'issue', 'issues',
+  'backlog', 'done', 'todo', 'open', 'closed', 'reopened', 'resolved', 'blocked', 'cancelled',
+  'draft', 'pending', 'waiting', 'progress', 'medium', 'high', 'critical', 'major', 'minor',
+  'trivial', 'blocker', 'verified', 'active', 'inactive',
+  // Conversational filler from ticket comments — adverbs, modals, interjections. Not concepts.
+  'currently', 'additionally', 'otherwise', 'instead', 'cannot', 'maybe', 'sorry', 'nothing',
+  'according', 'previously', 'seeing', 'getting', 'seems', 'looks', 'sounds', 'wdyt', 'anyway',
+  'basically', 'actually', 'really', 'probably', 'possibly', 'currently', 'somehow',
+]);
+
+/** True when a `term` label is a denylisted function word (checks the first word of multi-word terms). */
+const isStopTerm = (label: string): boolean => TERM_STOPWORDS.has(label.split(' ', 1)[0]!.toLowerCase());
+
 interface Candidate {
   label: string;
   type: GraphNodeType;
@@ -62,7 +104,7 @@ function entitiesOf(text: string): Candidate[] {
   for (const m of text.matchAll(RE.endpoint)) classify(m[0], 'endpoint', byLabel);
   for (const m of text.matchAll(RE.control)) classify(m[0], 'control', byLabel);
   for (const m of text.matchAll(RE.field)) classify(m[0], 'field', byLabel);
-  for (const m of text.matchAll(RE.term)) classify(m[0], 'term', byLabel);
+  for (const m of text.matchAll(RE.term)) if (!isStopTerm(m[0])) classify(m[0], 'term', byLabel);
   return [...byLabel].map(([label, type]) => ({ label, type }));
 }
 
@@ -80,9 +122,12 @@ export function extractGraph(projectId: ProjectId, chunks: readonly KnowledgeChu
   }
 
   // Promote to nodes: ids/endpoints/controls/fields always; terms must recur.
+  // Most-mentioned first, so the MAX_NODES cap keeps the important entities
+  // rather than whichever happened to be seen first while scanning chunks.
   const nodeByKey = new Map<string, GraphNode>();
   const keep = (c: Candidate): boolean => c.type !== 'term' || (mentions.get(`${c.type}:${c.label}`) ?? 0) >= TERM_MIN_MENTIONS;
-  for (const [k, count] of mentions) {
+  const ranked = [...mentions].sort((a, b) => b[1] - a[1]);
+  for (const [k, count] of ranked) {
     const sep = k.indexOf(':');
     const type = k.slice(0, sep) as GraphNodeType;
     const label = k.slice(sep + 1);

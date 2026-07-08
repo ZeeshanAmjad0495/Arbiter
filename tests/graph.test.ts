@@ -34,6 +34,30 @@ describe('knowledge graph (GraphRAG)', () => {
     expect(one.nodes.some((n) => n.label === 'Zephyr')).toBe(false);
   });
 
+  it('does not promote capitalized stop-words to term nodes, even when they recur', () => {
+    const p = newProjectId();
+    const { nodes } = extractGraph(p, [
+      chunk(p, 'This ticket describes checkout. When the user redeems points_balance, this updates order_total.'),
+      chunk(p, 'When invalid, that returns an error. These fields include order_total. This should not fail.', 1),
+      chunk(p, 'The Points Service validates member_id. These checks matter. That would break the flow.', 2),
+    ]);
+    const terms = nodes.filter((n) => n.type === 'term').map((n) => n.label);
+    // Function words recur the most but must never become concept nodes.
+    for (const noise of ['This', 'That', 'These', 'When', 'The']) expect(terms).not.toContain(noise);
+    // Real fields/ids still survive.
+    expect(nodes.some((n) => n.label === 'order_total')).toBe(true);
+    expect(nodes.some((n) => n.label === 'REQ' || n.label === 'member_id')).toBe(true);
+  });
+
+  it('keeps the most-mentioned entities when the node cap is reached', () => {
+    const p = newProjectId();
+    // Many rare fields seen first, then one field mentioned in every chunk.
+    const chunks = Array.from({ length: 30 }, (_, i) => chunk(p, `field_${i}_only and shared_field appear together.`, i));
+    const { nodes } = extractGraph(p, chunks);
+    const shared = nodes.find((n) => n.label === 'shared_field');
+    expect(shared?.mentions).toBe(30); // the important one is retained with its full count
+  });
+
   it('graphContext seeds from the query and expands the neighborhood', () => {
     const p = newProjectId();
     const { nodes, edges } = extractGraph(p, [
