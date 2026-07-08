@@ -54,14 +54,19 @@ pnpm eval:export-ragas                     # → evals/ragas-dataset.jsonl (offl
 pip install ragas datasets && python evals/ragas_eval.py
 
 # 2. garak — prompt-injection / jailbreak / leak probes (fill the token/project in the JSON)
-pip install garak
 envsubst < evals/redteam.garak.json > /tmp/arbiter.garak.json
-garak --model_type rest --generator_option_file /tmp/arbiter.garak.json \
-      --probes promptinject,dan,leakreplay,encoding
+python -m garak --model_type rest -G /tmp/arbiter.garak.json \
+      --probes promptinject.HijackHateHumansMini --generations 1   # widen probes as needed
 
 # 3. PyRIT — objective-driven red-team orchestration
-pip install pyrit && python evals/pyrit_redteam.py
+python evals/pyrit_redteam.py
 ```
+
+Install the tools once (open-source): `pip install -r evals/requirements.txt`. garak
+and PyRIT run as shown. **Ragas** currently conflicts with the pinned langchain in
+some environments (`langchain_community.chat_models.vertexai` was moved); the native
+`pnpm eval:redteam` already computes a Ragas-style faithfulness proxy with no Python
+dependency, so use that for the gate and run the Python Ragas only when its deps align.
 
 Every response the tools see is already guardrail-filtered, so they measure the
 **defended** surface end to end. `evals/ragas-dataset.jsonl` is committed as a

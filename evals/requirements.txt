@@ -1,0 +1,14 @@
+# Open-source LLM red-team / RAG-eval tools for driving a live Arbiter server.
+#   python3 -m venv .venv && . .venv/bin/activate
+#   pip install -r evals/requirements.txt
+#
+# garak (LLM vuln scanner) and PyRIT (red-team orchestration) run as documented in
+# evals/README.md. Ragas needs a langchain that still exposes ChatVertexAI — pin as
+# noted below if you hit `langchain_community.chat_models.vertexai`; otherwise use
+# the native `pnpm eval:redteam` faithfulness proxy (no Python dependency).
+garak>=0.9
+pyrit>=0.14
+datasets>=3
+
+# Ragas: enable when its langchain deps align in your environment.
+# ragas>=0.4

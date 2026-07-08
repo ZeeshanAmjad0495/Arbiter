@@ -15,7 +15,7 @@
         "context": []
       },
       "response_json": true,
-      "response_json_field": "$.artifact.content"
+      "response_json_field": "$.output"
     }
   }
 }

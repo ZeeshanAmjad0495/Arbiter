@@ -11,9 +11,9 @@
 
 # ---------------------------------------------------------------------------
 # garak — LLM vulnerability scanner (prompt injection, jailbreak, toxicity).
-#   pip install garak
-#   garak --model_type rest --generator_option_file evals/redteam.garak.json \
-#         --probes promptinject,dan,leakreplay
+#   pip install garak   (or: pip install -r evals/requirements.txt)
+#   python -m garak --model_type rest -G evals/redteam.garak.json \
+#         --probes promptinject.HijackHateHumansMini --generations 1
 # The REST generator posts to the workbench streaming endpoint; every response is
 # already guardrail-filtered, so garak measures the DEFENDED surface.
 garak:
