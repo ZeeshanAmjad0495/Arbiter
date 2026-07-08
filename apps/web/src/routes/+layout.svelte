@@ -51,6 +51,8 @@
     ico: string;
     cat?: string;
     admin?: boolean;
+    /** Show only for these roles (in addition to admin, who sees everything). */
+    roles?: string[];
   }
   const NAV: { group: string; items: NavItem[] }[] = [
     {
@@ -61,6 +63,7 @@
       group: 'Workspace',
       items: [
         { href: '/review', label: 'Review Queue', ico: 'review' },
+        { href: '/writeback', label: 'Write-back', ico: 'writeback', roles: ['admin', 'qa_lead'] },
         { href: '/runner', label: 'Test Runner', ico: 'runner' },
         { href: '/knowledge', label: 'Reference Docs', ico: 'knowledge' },
         { href: '/graph', label: 'Concept Map', ico: 'graph' },
@@ -244,7 +247,7 @@
 
     {#each NAV as grp}
       <div class="nav-group-label">{grp.group}</div>
-      {#each grp.items.filter((i) => !i.admin || currentUser?.role === 'admin') as item}
+      {#each grp.items.filter((i) => (!i.admin || currentUser?.role === 'admin') && (!i.roles || currentUser?.role === 'admin' || i.roles.includes(currentUser?.role ?? ''))) as item}
         <a
           href={item.href}
           class="nav-item"

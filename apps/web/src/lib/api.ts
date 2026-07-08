@@ -416,6 +416,42 @@ export async function listExecutions(): Promise<TestExecution[]> {
   return (await res.json()).executions;
 }
 
+/* ----- Gated write-back (human-approved; the only path Arbiter writes) ----- */
+
+export interface WriteTargetInfo {
+  id: string;
+  live: boolean;
+  repo: string | null;
+}
+export interface WriteResult {
+  applied: boolean;
+  verified: boolean;
+  reference?: string;
+  reason?: string;
+}
+
+export async function getWriteTarget(): Promise<WriteTargetInfo> {
+  const res = await apiFetch('/v1/writeback/target');
+  if (!res.ok) throw new Error(`write target ${res.status}`);
+  return res.json();
+}
+
+export async function applyWriteback(body: {
+  resource: string;
+  action: 'create' | 'update' | 'quarantine' | 'comment';
+  summary: string;
+  payload: Record<string, unknown>;
+  approver: string;
+  note?: string;
+}): Promise<{ result: WriteResult; target: string }> {
+  const res = await apiFetch('/v1/writeback/apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(res.status === 403 ? 'Only an admin or QA lead can apply a write-back.' : `Write-back failed (${res.status}): ${detail}`);
+  }
+  return res.json();
+}
+
 export async function resolveDemask(text: string): Promise<{ text: string; resolved: number; unresolved: number }> {
   const res = await apiFetch('/v1/demask/resolve', {
     method: 'POST',

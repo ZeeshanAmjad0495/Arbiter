@@ -26,6 +26,7 @@
     Play,
     KeyRound,
     Users,
+    Send,
   } from '@lucide/svelte';
 
   interface Props {
@@ -63,6 +64,7 @@
     runner: Play,
     demask: KeyRound,
     admin: Users,
+    writeback: Send,
     dot: Circle,
   };
 

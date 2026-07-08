@@ -31,6 +31,8 @@ import {
 import { UserId } from '@arbiter/core';
 import {
   type GuardrailEngine,
+  WriteGate,
+  type WritePlan,
   buildChunks,
   buildProjectGraph,
   computeQualityMetrics,
@@ -40,6 +42,7 @@ import {
   retrieveGraphContext,
   retrieveKnowledge,
   toKnowledgeContext,
+  writeTargetFor,
 } from '@arbiter/guardrail';
 import type { KnowledgeChunk } from '@arbiter/core';
 import { type TestRunner, createRunner } from '@arbiter/runner';
@@ -140,6 +143,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? true });
   const config = getConfig();
   const runner = deps.runner ?? createRunner(config);
+
+  // The ONLY path Arbiter writes: named human approval → apply → verify → audit.
+  // Targets a real GitHub repo when configured, else the in-memory sandbox; it
+  // hard-refuses the connected Jira workspace at register + apply time.
+  const writeTarget = writeTargetFor(config);
+  const writeGate = new WriteGate(deps.engine.repos.audit);
+  writeGate.register(writeTarget);
 
   // Dense retrieval (opt-in, free/local embeddings). When enabled, new chunks get an
   // embedding and retrieval searches by vector similarity; otherwise TF-IDF is used.
@@ -838,6 +848,44 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const projectId = await resolveProject(request, reply);
     if (!projectId) return reply;
     return { executions: await deps.engine.repos.executions.listByProject(projectId, 50) };
+  });
+
+  // ----- Gated write-back (the only path Arbiter writes; human-approved) -----
+  app.get('/v1/writeback/target', async () => ({
+    id: writeTarget.id,
+    live: writeTarget.id === 'github' && config.github.configured,
+    repo: writeTarget.id === 'github' ? `${config.env.GITHUB_OWNER}/${config.env.GITHUB_REPO}` : null,
+  }));
+
+  // Apply a write to the configured target. Requires a role + a NAMED approver;
+  // never the connected Jira (the gate hard-refuses it). Audited automatically.
+  const WriteBackBody = z.object({
+    resource: z.string().min(1).max(80),
+    action: z.enum(['create', 'update', 'quarantine', 'comment']),
+    summary: z.string().min(1).max(2000),
+    payload: z.record(z.unknown()).default({}),
+    approver: z.string().min(1).max(120),
+    note: z.string().max(500).optional(),
+  });
+  app.post('/v1/writeback/apply', async (request, reply) => {
+    if (!isAdmin(request) && (request as WithAuth).authRole !== 'qa_lead') return reply.status(403).send({ error: 'forbidden', message: 'Write-back requires an admin or QA lead.' });
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = WriteBackBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const plan: WritePlan = { targetId: writeTarget.id, resource: parsed.data.resource, action: parsed.data.action, summary: parsed.data.summary, payload: parsed.data.payload };
+    try {
+      const result = await writeGate.apply({
+        projectId,
+        actorId: actorFor(request),
+        plan,
+        approval: { approver: parsed.data.approver, approved: true, ...(parsed.data.note ? { note: parsed.data.note } : {}) },
+      });
+      return { result, target: writeTarget.id };
+    } catch (e) {
+      // e.g. writegate_forbidden_target — never the connected Jira.
+      return reply.status(422).send({ error: 'write_refused', message: e instanceof Error ? e.message : String(e) });
+    }
   });
 
   // ----- Review queue -----
