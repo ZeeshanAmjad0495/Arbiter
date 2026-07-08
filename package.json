@@ -18,7 +18,8 @@
     "build:api": "pnpm --filter @arbiter/api run build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "eval:redteam": "tsx evals/redteam.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",

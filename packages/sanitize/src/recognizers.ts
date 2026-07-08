@@ -38,6 +38,9 @@ export const CUSTOM_RECOGNIZERS: readonly Recognizer[] = [
   // Secrets / credentials (these trigger the hard block).
   { type: 'JWT', pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, score: 0.99 },
   { type: 'API_KEY', pattern: /\bsk-[A-Za-z0-9]{20,}\b/g, score: 0.95 },
+  // Stripe secret / restricted keys use underscores (sk_live_…, sk_test_…, rk_live_…),
+  // so the sk- pattern above misses them — a live Stripe key would otherwise pass through.
+  { type: 'API_KEY', pattern: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, score: 0.97 },
   { type: 'API_KEY', pattern: /\bAKIA[0-9A-Z]{16}\b/g, score: 0.95 },
   { type: 'API_KEY', pattern: /\bAIza[0-9A-Za-z_-]{20,}\b/g, score: 0.9 },
   { type: 'API_KEY', pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, score: 0.95 },

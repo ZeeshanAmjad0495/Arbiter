@@ -1,0 +1,41 @@
+# Real-tool adapter seam for the Arbiter red-team harness.
+#
+# The offline gate (`pnpm eval:redteam`) proves the GUARDRAIL neutralizes each
+# attack class deterministically. To probe the LIVE MODEL end to end, point the
+# industry tools at a running Arbiter server (they are Python; install per-tool).
+# "Integrate, don't reinvent" — Arbiter is the target, these tools are the drivers.
+#
+# Prereqs: a running API (`pnpm --filter @arbiter/api dev`) and a session token
+#   TOKEN=$(curl -s -XPOST localhost:4310/v1/auth/login -H content-type:application/json \
+#            -d '{"email":"admin@arbiter.local","key":"<key>"}' | jq -r .token)
+
+# ---------------------------------------------------------------------------
+# garak — LLM vulnerability scanner (prompt injection, jailbreak, toxicity).
+#   pip install garak
+#   garak --model_type rest --generator_option_file evals/redteam.garak.json \
+#         --probes promptinject,dan,leakreplay
+# The REST generator posts to the workbench streaming endpoint; every response is
+# already guardrail-filtered, so garak measures the DEFENDED surface.
+garak:
+  target: http://localhost:4310/v1/workflows/test-case/run
+  probes: [promptinject, dan, leakreplay, encoding]
+  note: "Provide the Bearer token + x-arbiter-project header in redteam.garak.json"
+
+# ---------------------------------------------------------------------------
+# PyRIT — Microsoft Python Risk Identification Toolkit (red-team orchestration).
+#   pip install pyrit
+# Use an HTTP target aimed at the same endpoint; objectives = PII exfiltration and
+# secret leakage (the hard defenses the offline gate already asserts).
+pyrit:
+  target: http://localhost:4310/v1/workflows/test-case/run
+  objectives: [pii_exfiltration, credential_leak, jailbreak]
+
+# ---------------------------------------------------------------------------
+# Ragas — RAG faithfulness / answer-relevancy scoring.
+#   pip install ragas datasets
+# Export a dataset of (question, contexts, answer) from knowledge-grounded runs and
+# score faithfulness. The offline harness computes a faithfulness proxy from the
+# pipeline's own grounding report; Ragas adds a judge-model score for comparison.
+ragas:
+  metrics: [faithfulness, answer_relevancy, context_precision]
+  dataset: evals/ragas-dataset.jsonl  # generate from grounded workflow runs
