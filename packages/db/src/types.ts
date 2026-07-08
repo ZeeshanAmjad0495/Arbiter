@@ -106,6 +106,25 @@ export interface SchemaRepository {
   delete(projectId: ProjectId, id: ProjectSchemaId): Promise<boolean>;
 }
 
+/**
+ * Durable de-mask vault (PII sink). Stores only ciphertext — encryption/decryption
+ * happens in the sanitize layer, so the DB never holds plaintext PII. Every op is
+ * project-scoped and RLS-isolated; placeholders are allocated atomically so two
+ * concurrent sanitize() calls can never mint the same `[TYPE_n]`.
+ */
+export interface DemaskRepository {
+  /**
+   * Atomically allocate the next `[TYPE_n]` placeholder for (project, type) AND
+   * persist its ciphertext in one transaction. Returns the placeholder.
+   */
+  store(projectId: ProjectId, type: string, cipher: Uint8Array, createdAtMs: number): Promise<string>;
+  /** Ciphertext for a placeholder, iff it belongs to `projectId` (fail-closed). */
+  getCipher(projectId: ProjectId, placeholder: string): Promise<{ cipher: Uint8Array; type: string } | null>;
+  /** Retention control — drop this project's entries older than the cutoff. Returns count removed. */
+  purgeOlderThan(projectId: ProjectId, cutoffMs: number): Promise<number>;
+  count(projectId: ProjectId): Promise<number>;
+}
+
 export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
@@ -117,6 +136,7 @@ export interface RepositoryBundle {
   readonly knowledge: KnowledgeRepository;
   readonly schemas: SchemaRepository;
   readonly graph: GraphRepository;
+  readonly demask: DemaskRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).

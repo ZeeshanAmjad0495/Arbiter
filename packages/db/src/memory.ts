@@ -22,6 +22,7 @@ import type {
 import type {
   ArtifactRepository,
   AuditRepository,
+  DemaskRepository,
   GraphRepository,
   KnowledgeRepository,
   ProjectRepository,
@@ -217,6 +218,39 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  // De-mask vault: ciphertext keyed by `projectId::placeholder`; per-(project,type) counters.
+  const demaskEntries = new Map<string, { cipher: Uint8Array; type: string; createdAtMs: number }>();
+  const demaskCounters = new Map<string, number>();
+  const demaskRepo: DemaskRepository = {
+    async store(projectId: ProjectId, type: string, cipher: Uint8Array, createdAtMs: number) {
+      const ckey = `${projectId}::${type}`;
+      const n = (demaskCounters.get(ckey) ?? 0) + 1;
+      demaskCounters.set(ckey, n);
+      const placeholder = `[${type}_${n}]`;
+      demaskEntries.set(`${projectId}::${placeholder}`, { cipher, type, createdAtMs });
+      return placeholder;
+    },
+    async getCipher(projectId: ProjectId, placeholder: string) {
+      const entry = demaskEntries.get(`${projectId}::${placeholder}`);
+      return entry ? { cipher: entry.cipher, type: entry.type } : null;
+    },
+    async purgeOlderThan(projectId: ProjectId, cutoffMs: number) {
+      let removed = 0;
+      for (const [k, v] of demaskEntries) {
+        if (k.startsWith(`${projectId}::`) && v.createdAtMs < cutoffMs) {
+          demaskEntries.delete(k);
+          removed++;
+        }
+      }
+      return removed;
+    },
+    async count(projectId: ProjectId) {
+      let n = 0;
+      for (const k of demaskEntries.keys()) if (k.startsWith(`${projectId}::`)) n++;
+      return n;
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
@@ -228,6 +262,7 @@ export function createMemoryRepositories(): RepositoryBundle {
     reviews: reviewRepo,
     knowledge: knowledgeRepo,
     schemas: schemaRepo,
+    demask: demaskRepo,
     async applyReviewDecision(write) {
       const updated = await artifactRepo.update(write.projectId, write.artifactId, {
         status: write.status,

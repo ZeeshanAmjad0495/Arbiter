@@ -17,15 +17,16 @@ export { CREDENTIAL_TYPES, mergeMatches, runRecognizers, sanitizeCore, type RawM
 export interface SanitizePort {
   readonly engine: 'presidio' | 'regex';
   readonly demask: DemaskStore;
-  sanitize(text: string): Promise<SanitizationReport>;
+  /** `projectId` tenant-scopes the reversible de-mask mappings this run allocates. */
+  sanitize(text: string, projectId?: string): Promise<SanitizationReport>;
 }
 
 class RegexSanitizer implements SanitizePort {
   readonly engine = 'regex' as const;
   constructor(readonly demask: DemaskStore) {}
-  async sanitize(text: string): Promise<SanitizationReport> {
+  async sanitize(text: string, projectId?: string): Promise<SanitizationReport> {
     const matches = runRecognizers(text, REGEX_RECOGNIZERS);
-    return sanitizeCore(text, matches, 'regex', this.demask);
+    return sanitizeCore(text, matches, 'regex', this.demask, projectId);
   }
 }
 
@@ -35,13 +36,13 @@ class PresidioSanitizer implements SanitizePort {
     readonly demask: DemaskStore,
     private readonly analyzerUrl: string,
   ) {}
-  async sanitize(text: string): Promise<SanitizationReport> {
+  async sanitize(text: string, projectId?: string): Promise<SanitizationReport> {
     try {
       const presidio = await analyzeWithPresidio(text, this.analyzerUrl);
       // Always layer in the custom recognizers (member IDs, secrets, internal URLs)
       // that Presidio's defaults miss.
       const custom = runRecognizers(text, CUSTOM_RECOGNIZERS);
-      return sanitizeCore(text, [...presidio, ...custom], 'presidio', this.demask);
+      return sanitizeCore(text, [...presidio, ...custom], 'presidio', this.demask, projectId);
     } catch (error) {
       // Fail safe, but LOUD and DISTINGUISHABLE: a silent downgrade of PHI
       // protection is a security event, not a warning. `regex-fallback` is
@@ -51,7 +52,7 @@ class PresidioSanitizer implements SanitizePort {
         `[sanitize] Presidio unreachable at ${this.analyzerUrl} — DEGRADED to regex-fallback (weaker PHI coverage): ${error instanceof Error ? error.message : String(error)}`,
       );
       const matches = runRecognizers(text, REGEX_RECOGNIZERS);
-      return sanitizeCore(text, matches, 'regex-fallback', this.demask);
+      return sanitizeCore(text, matches, 'regex-fallback', this.demask, projectId);
     }
   }
 }
@@ -68,12 +69,12 @@ export function createSanitizer(config: ArbiterConfig, demask: DemaskStore = cre
  * scrub reviewer edits and retrieved context so raw PHI never reaches storage
  * or the model even when it enters outside the primary input.
  */
-export async function sanitizeJson(value: unknown, sanitizer: SanitizePort): Promise<unknown> {
-  if (typeof value === 'string') return (await sanitizer.sanitize(value)).sanitizedText;
-  if (Array.isArray(value)) return Promise.all(value.map((v) => sanitizeJson(v, sanitizer)));
+export async function sanitizeJson(value: unknown, sanitizer: SanitizePort, projectId?: string): Promise<unknown> {
+  if (typeof value === 'string') return (await sanitizer.sanitize(value, projectId)).sanitizedText;
+  if (Array.isArray(value)) return Promise.all(value.map((v) => sanitizeJson(v, sanitizer, projectId)));
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = await sanitizeJson(v, sanitizer);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = await sanitizeJson(v, sanitizer, projectId);
     return out;
   }
   return value;

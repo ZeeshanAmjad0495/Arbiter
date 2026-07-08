@@ -20,6 +20,7 @@ import {
   newProjectId,
   newProjectSchemaId,
   newReviewLogId,
+  newWorkflowRunId,
   nowIso,
   toPublicUser,
   unifiedDiff,
@@ -163,6 +164,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     llm: config.llm,
     telemetry: config.telemetry,
     demask: config.demask,
+    // Durable = the encrypted de-mask vault persists to Postgres (survives restarts)
+    // rather than living only in this process's memory.
+    demaskDurable: config.demask === 'encrypted' && config.persistence === 'postgres',
   };
 
   // Real OTLP export when an endpoint is configured; best-effort, never blocks a request.
@@ -274,7 +278,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
     // Seed the project's OWN context into knowledge (sanitized — never a PHI sink).
     if (context && context.trim()) {
-      const safe = (await deps.engine.sanitizer.sanitize(context)).sanitizedText;
+      const safe = (await deps.engine.sanitizer.sanitize(context, project.id)).sanitizedText;
       const docId = newKnowledgeDocId();
       await deps.engine.repos.knowledge.addDocument(
         KnowledgeDocument.parse({
@@ -535,7 +539,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
     const { title, content, sourceType, classification } = parsed.data;
     // Sanitize before storing — knowledge is a ground source, never a PHI sink.
-    const safe = (await deps.engine.sanitizer.sanitize(content)).sanitizedText;
+    const safe = (await deps.engine.sanitizer.sanitize(content, projectId)).sanitizedText;
     const docId = newKnowledgeDocId();
     const doc = KnowledgeDocument.parse({
       id: docId,
@@ -586,6 +590,43 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { metrics: await computeQualityMetrics(deps.engine.repos, projectId) };
   });
 
+  // ----- De-mask / re-identification (admin-only PII sink) -----
+  // Rehydrates sanitizer placeholders back to real values for an APPROVED artifact
+  // the operator is handing off. This egresses PII, so it is admin-gated, tenant-
+  // scoped (a placeholder resolves ONLY within its own project), and audited by
+  // COUNT (never by value). Credentials are never stored, so `[…_REDACTED]` stays.
+  app.post('/v1/demask/resolve', async (request, reply) => {
+    if ((request as WithAuth).authRole !== 'admin') return reply.status(403).send({ error: 'forbidden' });
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = z.object({ text: z.string().max(200_000) }).safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+
+    const store = deps.engine.sanitizer.demask;
+    // Placeholders look like [EMAIL_ADDRESS_12]; the type may itself contain '_'.
+    const tokens = [...new Set(parsed.data.text.match(/\[[A-Z0-9_]+_\d+\]/g) ?? [])];
+    const resolvedMap = new Map<string, string>();
+    for (const token of tokens) {
+      const original = await store.resolve(token, projectId);
+      if (original !== null) resolvedMap.set(token, original);
+    }
+    const rehydrated = parsed.data.text.replace(/\[[A-Z0-9_]+_\d+\]/g, (m) => resolvedMap.get(m) ?? m);
+
+    await deps.engine.repos.audit.append(
+      AuditEvent.parse({
+        id: newAuditEventId(),
+        projectId,
+        actorId: actorFor(request),
+        workflowRunId: newWorkflowRunId(),
+        action: 'demask.resolve',
+        // Counts only — the resolved PII itself is NEVER written to the audit log.
+        detail: { placeholders: tokens.length, resolved: resolvedMap.size, unresolved: tokens.length - resolvedMap.size },
+        createdAt: nowIso(),
+      }),
+    );
+    return { text: rehydrated, resolved: resolvedMap.size, unresolved: tokens.length - resolvedMap.size };
+  });
+
   // ----- Review queue -----
   app.get('/v1/reviews', async (request, reply) => {
     const projectId = await resolveProject(request, reply);
@@ -634,7 +675,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     let editDiff: string | undefined;
     let contentPatch: unknown | undefined;
     if (editedContent !== undefined) {
-      const sanitizedEdit = await sanitizeJson(editedContent, deps.engine.sanitizer);
+      const sanitizedEdit = await sanitizeJson(editedContent, deps.engine.sanitizer, projectId);
       const before = JSON.stringify(artifact.content, null, 2);
       const after = JSON.stringify(sanitizedEdit, null, 2);
       if (before !== after) {

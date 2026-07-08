@@ -20,6 +20,7 @@ import {
 import type {
   ArtifactRepository,
   AuditRepository,
+  DemaskRepository,
   KnowledgeRepository,
   GraphRepository,
   ProjectRepository,
@@ -451,6 +452,49 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     },
   };
 
+  const demask: DemaskRepository = {
+    async store(projectId, type, cipher, createdAtMs) {
+      return withProjectTx(pool, projectId, async (client) => {
+        // Atomic counter bump + insert in one tx — two concurrent sanitize()
+        // calls can never mint the same [TYPE_n].
+        const { rows } = await client.query(
+          `INSERT INTO demask_counters (project_id, finding_type, n) VALUES ($1, $2, 1)
+           ON CONFLICT (project_id, finding_type) DO UPDATE SET n = demask_counters.n + 1
+           RETURNING n`,
+          [projectId, type],
+        );
+        const placeholder = `[${type}_${rows[0]!.n}]`;
+        await client.query('INSERT INTO demask_entries (project_id, placeholder, finding_type, cipher, created_at_ms) VALUES ($1,$2,$3,$4,$5)', [
+          projectId,
+          placeholder,
+          type,
+          Buffer.from(cipher),
+          createdAtMs,
+        ]);
+        return placeholder;
+      });
+    },
+    async getCipher(projectId, placeholder) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query('SELECT cipher, finding_type FROM demask_entries WHERE project_id = $1 AND placeholder = $2', [projectId, placeholder]);
+        if (rows.length === 0) return null;
+        return { cipher: rows[0]!.cipher as Uint8Array, type: rows[0]!.finding_type as string };
+      });
+    },
+    async purgeOlderThan(projectId, cutoffMs) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rowCount } = await client.query('DELETE FROM demask_entries WHERE project_id = $1 AND created_at_ms < $2', [projectId, cutoffMs]);
+        return rowCount ?? 0;
+      });
+    },
+    async count(projectId) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query('SELECT count(*)::int AS n FROM demask_entries WHERE project_id = $1', [projectId]);
+        return rows[0]!.n as number;
+      });
+    },
+  };
+
   return {
     kind: 'postgres',
     projects,
@@ -462,6 +506,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     reviews,
     knowledge,
     schemas,
+    demask,
     async applyReviewDecision(write) {
       return withProjectTx(pool, write.projectId, async (client) => {
         const { rows } =

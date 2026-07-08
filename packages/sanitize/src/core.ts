@@ -84,6 +84,7 @@ export async function sanitizeCore(
   rawMatches: readonly RawMatch[],
   engine: 'presidio' | 'regex' | 'regex-fallback',
   demask: DemaskStore,
+  projectId?: string,
 ): Promise<SanitizationReport> {
   const matches = mergeMatches(rawMatches);
   // Belt-and-suspenders: a credential ANYWHERE in the raw matches blocks the
@@ -106,7 +107,7 @@ export async function sanitizeCore(
       blockReasons.push(`Detected ${m.type}. Request blocked — rotate the exposed secret immediately.`);
     } else {
       // The store allocates a globally-unique placeholder (no cross-call collisions).
-      placeholder = await demask.put(m.type, text.slice(m.start, m.end));
+      placeholder = await demask.put(m.type, text.slice(m.start, m.end), projectId);
     }
     out += placeholder;
     cursor = m.end;

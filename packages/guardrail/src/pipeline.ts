@@ -166,7 +166,7 @@ export class GuardrailEngine {
       // 1. Sanitize.
       req.onProgress?.('sanitize');
       const sanitization = await withSpan(root, 'sanitize', { [ArbiterAttr.STAGE]: 'sanitize' }, async (span) => {
-        const report = await this.deps.sanitizer.sanitize(req.rawInput);
+        const report = await this.deps.sanitizer.sanitize(req.rawInput, req.projectId);
         span.setAttribute(ArbiterAttr.SANITIZE_FINDINGS, report.findings.length);
         span.setAttribute(ArbiterAttr.SANITIZE_BLOCKED, report.blocked);
         return report;
@@ -214,7 +214,7 @@ export class GuardrailEngine {
         const items = await Promise.all(
           built.items.map(async (it) => ({
             ...it,
-            content: (await this.deps.sanitizer.sanitize(it.content)).sanitizedText,
+            content: (await this.deps.sanitizer.sanitize(it.content, req.projectId)).sanitizedText,
           })),
         );
         const grounded: ContextPack = { ...built, items };
@@ -281,7 +281,7 @@ export class GuardrailEngine {
       let outputPiiBlocked = false;
       if (req.rescanOutput && generation.output != null) {
         const rescan = await withSpan(root, 'validate', { [ArbiterAttr.STAGE]: 'validate' }, async (span) => {
-          const report = await this.deps.sanitizer.sanitize(JSON.stringify(generation.output));
+          const report = await this.deps.sanitizer.sanitize(JSON.stringify(generation.output), req.projectId);
           span.setAttribute(ArbiterAttr.SANITIZE_FINDINGS, report.findings.length);
           return report;
         });
