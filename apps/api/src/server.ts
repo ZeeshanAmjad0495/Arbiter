@@ -29,6 +29,7 @@ import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
 import { fetchJiraIssue } from './jira';
+import { validateData } from './validate';
 
 const ReviewBody = z.object({
   decision: z.enum(['approved', 'rejected', 'needs_changes']),
@@ -266,6 +267,26 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
     const ok = await deps.engine.repos.schemas.delete(projectId, idCheck.data);
     return ok ? { deleted: true } : reply.status(404).send({ error: 'not_found' });
+  });
+
+  // Validate a data file (JSON) against a saved schema. Returns errors with paths;
+  // never echoes data values (no PII leak). Data is validated locally, not stored.
+  app.post<{ Params: { id: string } }>('/v1/schemas/:id/validate', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const idCheck = ProjectSchemaId.safeParse(request.params.id);
+    if (!idCheck.success) return reply.status(400).send({ error: 'invalid_id' });
+    const parsed = z.object({ data: z.string().min(1).max(2_000_000) }).safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const s = await deps.engine.repos.schemas.get(projectId, idCheck.data);
+    if (!s) return reply.status(404).send({ error: 'not_found' });
+    let data: unknown;
+    try {
+      data = JSON.parse(parsed.data.data);
+    } catch {
+      return reply.status(400).send({ error: 'invalid_json', message: 'The data file is not valid JSON.' });
+    }
+    return validateData(s.schema, data);
   });
 
   // Read-only Jira fetch-by-ticket-key (grounding pull-forward).
