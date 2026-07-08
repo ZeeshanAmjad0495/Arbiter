@@ -27,10 +27,13 @@ export class AuthService {
   ) {}
 
   /**
-   * Issue (or rotate) an access key for an email, creating the user if missing.
+   * Issue (or re-issue) an access key for an email, creating the user if missing.
    * Returns the PLAINTEXT key — the caller emails it; only its hash is stored.
+   *
+   * `temporary` (the admin-invite / reset path): the user is forced to generate
+   * their own permanent key on first login (mustRotate=true).
    */
-  async issueKey(email: string, role: UserRole = 'qa'): Promise<{ user: PublicUser; key: string }> {
+  async issueKey(email: string, role: UserRole = 'qa', temporary = false): Promise<{ user: PublicUser; key: string }> {
     const existing = await this.repos.users.getByEmail(email);
     const key = genKey();
     const user = User.parse({
@@ -38,10 +41,24 @@ export class AuthService {
       email,
       role: existing?.role ?? role,
       accessKeyHash: sha256(key),
+      mustRotate: temporary,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     });
     await this.repos.users.upsert(user);
     return { user: toPublicUser(user), key };
+  }
+
+  /**
+   * Rotate the CURRENT user's key to a fresh permanent one and clear the temporary
+   * flag. Returns the new PLAINTEXT key ONCE — the UI shows it a single time. The
+   * old (invite) key stops working; existing sessions (opaque tokens) stay valid.
+   */
+  async rotateKey(userId: UserId): Promise<{ key: string } | null> {
+    const user = await this.repos.users.get(userId);
+    if (!user) return null;
+    const key = genKey();
+    await this.repos.users.upsert(User.parse({ ...user, accessKeyHash: sha256(key), mustRotate: false }));
+    return { key };
   }
 
   /** Verify email + key, create a session, and return the session token + expiry. */

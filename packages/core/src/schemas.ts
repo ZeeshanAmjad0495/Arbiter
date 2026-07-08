@@ -277,14 +277,19 @@ export const User = z.object({
   role: UserRole.default('qa'),
   /** sha256 of the user's access key (the key itself is emailed, never stored). */
   accessKeyHash: z.string().optional(),
+  /**
+   * True while the current key is a temporary, admin-issued invite. The user is
+   * forced to generate their own permanent key on first login; set false on rotate.
+   */
+  mustRotate: z.boolean().default(false),
   createdAt: z.string().datetime(),
 });
 export type User = z.infer<typeof User>;
 
 /** A safe, client-facing view of a user — never includes the access-key hash. */
-export const PublicUser = z.object({ id: UserId, email: z.string().email(), role: UserRole });
+export const PublicUser = z.object({ id: UserId, email: z.string().email(), role: UserRole, mustRotate: z.boolean().default(false) });
 export type PublicUser = z.infer<typeof PublicUser>;
-export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, role: u.role });
+export const toPublicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, role: u.role, mustRotate: u.mustRotate ?? false });
 
 /* ------------------------------------------------------------------ *
  * Auth sessions (key-based login → session with expiry)               *

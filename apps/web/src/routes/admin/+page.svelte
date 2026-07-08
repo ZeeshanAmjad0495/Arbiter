@@ -95,7 +95,7 @@
     </div>
     {#if issuedKey}
       <div class="banner good" style="margin-top:12px">
-        Access key for <b>{issuedKey.email}</b> — share it securely, it won't be shown again:
+        <b>Temporary</b> access key for <b>{issuedKey.email}</b> — email it to them securely (shown once). They'll set their own permanent key on first sign-in.
         <code class="key">{issuedKey.key}</code>
       </div>
     {/if}

@@ -147,29 +147,31 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
       email: row.email,
       role: row.role,
       accessKeyHash: row.access_key_hash ?? undefined,
+      mustRotate: row.must_rotate ?? false,
       createdAt: iso(row.created_at as Date | string),
     });
 
+  const USER_COLS = 'id, email, role, access_key_hash, must_rotate, created_at';
   const users: UserRepository = {
     async upsert(user) {
       await pool.query(
-        `INSERT INTO users (id, email, role, access_key_hash, created_at)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, access_key_hash = EXCLUDED.access_key_hash`,
-        [user.id, user.email, user.role, user.accessKeyHash ?? null, user.createdAt],
+        `INSERT INTO users (id, email, role, access_key_hash, must_rotate, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, access_key_hash = EXCLUDED.access_key_hash, must_rotate = EXCLUDED.must_rotate`,
+        [user.id, user.email, user.role, user.accessKeyHash ?? null, user.mustRotate ?? false, user.createdAt],
       );
       return user;
     },
     async get(id) {
-      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users WHERE id = $1', [id]);
+      const { rows } = await pool.query(`SELECT ${USER_COLS} FROM users WHERE id = $1`, [id]);
       return rows[0] ? rowToUser(rows[0]) : null;
     },
     async getByEmail(email) {
-      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users WHERE email = $1', [email]);
+      const { rows } = await pool.query(`SELECT ${USER_COLS} FROM users WHERE email = $1`, [email]);
       return rows[0] ? rowToUser(rows[0]) : null;
     },
     async list() {
-      const { rows } = await pool.query('SELECT id, email, role, access_key_hash, created_at FROM users ORDER BY created_at');
+      const { rows } = await pool.query(`SELECT ${USER_COLS} FROM users ORDER BY created_at`);
       return rows.map(rowToUser);
     },
   };

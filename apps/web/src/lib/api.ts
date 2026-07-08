@@ -47,6 +47,15 @@ export interface AuthUser {
   id: string;
   email: string;
   role: string;
+  /** True while on a temporary invite key — the user must set their own on first login. */
+  mustRotate?: boolean;
+}
+
+/** First-login rotation: generate the user's own permanent key. Returned ONCE. */
+export async function rotateKey(): Promise<string> {
+  const res = await apiFetch('/v1/auth/rotate-key', { method: 'POST' });
+  if (!res.ok) throw new Error(`rotate key ${res.status}`);
+  return (await res.json()).key;
 }
 
 export async function login(email: string, key: string): Promise<AuthUser> {

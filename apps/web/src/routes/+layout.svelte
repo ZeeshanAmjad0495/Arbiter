@@ -17,6 +17,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import Login from '$lib/components/Login.svelte';
+  import SetupKey from '$lib/components/SetupKey.svelte';
   import { CATEGORIES } from '$lib/catalog';
 
   let { children } = $props();
@@ -226,6 +227,8 @@
   <div style="min-height:100vh"></div>
 {:else if needLogin}
   <Login onLogin={onLoggedIn} />
+{:else if currentUser?.mustRotate}
+  <SetupKey email={currentUser.email} ondone={() => { if (currentUser) currentUser = { ...currentUser, mustRotate: false }; }} />
 {:else}
 <a class="skip-link" href="#main-content">Skip to main content</a>
 

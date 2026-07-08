@@ -287,16 +287,27 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return user ? { user: toPublicUser(user) } : reply.status(401).send({ error: 'unauthorized' });
   });
 
-  // Issue/rotate an access key for an email (admin only). In offline/dev the key is
-  // returned so the admin can relay it; a real deployment emails it (SES/SMTP).
+  // Invite/re-issue a TEMPORARY access key for an email (admin only). In offline/dev
+  // the key is returned so the admin can relay it; a deployment emails it (SES/SMTP).
+  // `temporary` (default true) forces the user to set their own key on first login.
   app.post('/v1/auth/issue-key', async (request, reply) => {
     if (!deps.auth) return reply.status(501).send({ error: 'auth_disabled' });
     if ((request as WithAuth).authRole !== 'admin') return reply.status(403).send({ error: 'forbidden' });
-    const parsed = z.object({ email: z.string().email(), role: z.enum(['qa', 'qa_lead', 'admin']).default('qa') }).safeParse(request.body ?? {});
+    const parsed = z.object({ email: z.string().email(), role: z.enum(['qa', 'qa_lead', 'admin']).default('qa'), temporary: z.boolean().default(true) }).safeParse(request.body ?? {});
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_body' });
-    const { user, key } = await deps.auth.issueKey(parsed.data.email, parsed.data.role);
-    app.log.info(`[auth] issued access key for ${user.email} (role ${user.role})`);
+    const { user, key } = await deps.auth.issueKey(parsed.data.email, parsed.data.role, parsed.data.temporary);
+    app.log.info(`[auth] issued ${parsed.data.temporary ? 'temporary ' : ''}access key for ${user.email} (role ${user.role})`);
     return { user, key };
+  });
+
+  // First-login rotation: the signed-in user generates their own permanent key.
+  // Returns the new key ONCE (the UI shows it a single time). Clears mustRotate.
+  app.post('/v1/auth/rotate-key', async (request, reply) => {
+    if (!deps.auth) return reply.status(501).send({ error: 'auth_disabled' });
+    const uid = (request as WithAuth).authUserId;
+    if (!uid) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await deps.auth.rotateKey(uid);
+    return result ? { key: result.key } : reply.status(404).send({ error: 'not_found' });
   });
 
   // ----- Admin: users, roles, and per-project access (admin-only) -----
