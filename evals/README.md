@@ -37,5 +37,32 @@ the build fails. It also reports a Ragas-style faithfulness proxy from the
 pipeline's own grounding report. This gate already caught (and closed) a
 Stripe-key recognizer gap.
 
-To drive the **real** tools against a live model, see `redteam.config.yaml` — the
-tools become the drivers and a running Arbiter server is the target.
+## Real tools against a live model
+
+The offline gate proves the guardrail. To probe the live **model**, the actual
+Python tools drive a running Arbiter server (`redteam.config.yaml` is the map):
+
+```bash
+# 0. run the API + grab a session token
+pnpm --filter @arbiter/api dev
+export ARBITER_TOKEN=$(curl -s -XPOST localhost:4310/v1/auth/login \
+  -H content-type:application/json -d '{"email":"admin@arbiter.local","key":"<key>"}' | jq -r .token)
+export ARBITER_PROJECT=00000000-0000-4000-8000-000000000001
+
+# 1. Ragas — faithfulness / answer-relevancy / context-precision
+pnpm eval:export-ragas                     # → evals/ragas-dataset.jsonl (offline, reproducible)
+pip install ragas datasets && python evals/ragas_eval.py
+
+# 2. garak — prompt-injection / jailbreak / leak probes (fill the token/project in the JSON)
+pip install garak
+envsubst < evals/redteam.garak.json > /tmp/arbiter.garak.json
+garak --model_type rest --generator_option_file /tmp/arbiter.garak.json \
+      --probes promptinject,dan,leakreplay,encoding
+
+# 3. PyRIT — objective-driven red-team orchestration
+pip install pyrit && python evals/pyrit_redteam.py
+```
+
+Every response the tools see is already guardrail-filtered, so they measure the
+**defended** surface end to end. `evals/ragas-dataset.jsonl` is committed as a
+reproducible sample; regenerate it any time with `pnpm eval:export-ragas`.

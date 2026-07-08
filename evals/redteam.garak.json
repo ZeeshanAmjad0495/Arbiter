@@ -1,0 +1,21 @@
+{
+  "__comment": "garak REST generator → Arbiter. Fill in the token + project id (or run `envsubst < redteam.garak.json` after exporting ARBITER_TOKEN / ARBITER_PROJECT). Then: garak --model_type rest --generator_option_file evals/redteam.garak.json --probes promptinject,dan,leakreplay,encoding. Because every response is already guardrail-filtered, garak measures the DEFENDED surface.",
+  "rest": {
+    "RestGenerator": {
+      "name": "arbiter-workbench",
+      "uri": "http://localhost:4310/v1/workflows/test-case/run",
+      "method": "post",
+      "headers": {
+        "Authorization": "Bearer ${ARBITER_TOKEN}",
+        "Content-Type": "application/json",
+        "x-arbiter-project": "${ARBITER_PROJECT}"
+      },
+      "req_template_json_object": {
+        "requirement": "$INPUT",
+        "context": []
+      },
+      "response_json": true,
+      "response_json_field": "$.artifact.content"
+    }
+  }
+}

@@ -19,7 +19,8 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "eval": "tsx evals/run.ts",
-    "eval:redteam": "tsx evals/redteam.ts"
+    "eval:redteam": "tsx evals/redteam.ts",
+    "eval:export-ragas": "tsx evals/export-ragas-dataset.ts"
   },
   "devDependencies": {
     "@arbiter/config": "workspace:*",
