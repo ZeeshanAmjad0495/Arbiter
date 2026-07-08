@@ -20,9 +20,25 @@ import { listWorkflowsMeta } from '@arbiter/workflows';
 import { buildServer } from '../apps/api/src/server';
 import { ZUUB_TICKETS } from '../tests/fixtures/zuub-tickets';
 
-const CONCURRENCY = 6;
-const RUN_TIMEOUT_MS = 120_000;
+// Kimi Tier-2 limits: concurrency 100, RPM 500, TPM 3M. We run 40 in flight (slow
+// generations overlap) and space request STARTS ≥130ms apart (~460 RPM) so we stay
+// under the RPM cap even if some responses come back fast.
+const CONCURRENCY = 40;
+const MIN_REQUEST_INTERVAL_MS = 130;
+// Kimi is slow on the heaviest workflows (p95 ≈ 83s, tail > 90s), so give each run
+// generous headroom — the throttle + concurrency cap keep us within the rate limits.
+const RUN_TIMEOUT_MS = 240_000;
 const smokeOnly = process.argv.includes('--smoke');
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let lastReqAt = 0;
+/** Global request-start throttle to keep RPM under the provider cap. */
+async function rateGate(): Promise<void> {
+  const now = Date.now();
+  const scheduled = Math.max(now, lastReqAt + MIN_REQUEST_INTERVAL_MS);
+  lastReqAt = scheduled;
+  if (scheduled > now) await sleep(scheduled - now);
+}
 
 interface RunResult {
   flow: string;
@@ -119,33 +135,41 @@ async function main(): Promise<void> {
   const pairs = flows.flatMap((flow) => ZUUB_TICKETS.map((t) => ({ flow, t })));
   console.log(`Running ${pairs.length} real-LLM cases (concurrency ${CONCURRENCY})…`);
   const started = Date.now();
-  const results = await pool(pairs, CONCURRENCY, async ({ flow, t }): Promise<RunResult> => {
+  const attempt = async (flow: string, t: (typeof ZUUB_TICKETS)[number]): Promise<RunResult> => {
+    await rateGate();
     const start = Date.now();
+    const res = await withTimeout(run(flow, t.content, t.riskTier), RUN_TIMEOUT_MS, `${flow}×${t.key}`);
+    const ms = Date.now() - start;
+    if (res.statusCode !== 200) return { flow, ticket: t.key, ok: false, ms, error: `HTTP ${res.statusCode}` };
+    const b = res.json() as {
+      sanitization: { blocked: boolean; findings: unknown[] };
+      review?: { decision: string };
+      grounding?: { violations: number };
+      output: unknown;
+      model: string;
+    };
+    return {
+      flow,
+      ticket: t.key,
+      ok: true,
+      blocked: b.sanitization.blocked,
+      decision: b.review?.decision,
+      groundingViolations: b.grounding?.violations,
+      findings: b.sanitization.findings.length,
+      model: b.model,
+      outputChars: b.output ? JSON.stringify(b.output).length : 0,
+      ms,
+    };
+  };
+  const results = await pool(pairs, CONCURRENCY, async ({ flow, t }): Promise<RunResult> => {
     try {
-      const res = await withTimeout(run(flow, t.content, t.riskTier), RUN_TIMEOUT_MS, `${flow}×${t.key}`);
-      const ms = Date.now() - start;
-      if (res.statusCode !== 200) return { flow, ticket: t.key, ok: false, ms, error: `HTTP ${res.statusCode}` };
-      const b = res.json() as {
-        sanitization: { blocked: boolean; findings: unknown[] };
-        review?: { decision: string };
-        grounding?: { violations: number };
-        output: unknown;
-        model: string;
-      };
-      return {
-        flow,
-        ticket: t.key,
-        ok: true,
-        blocked: b.sanitization.blocked,
-        decision: b.review?.decision,
-        groundingViolations: b.grounding?.violations,
-        findings: b.sanitization.findings.length,
-        model: b.model,
-        outputChars: b.output ? JSON.stringify(b.output).length : 0,
-        ms,
-      };
-    } catch (e) {
-      return { flow, ticket: t.key, ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) };
+      return await attempt(flow, t);
+    } catch {
+      try {
+        return await attempt(flow, t); // one retry absorbs a transient hang / 429
+      } catch (e) {
+        return { flow, ticket: t.key, ok: false, ms: 0, error: e instanceof Error ? e.message : String(e) };
+      }
     }
   });
   const wallMs = Date.now() - started;
