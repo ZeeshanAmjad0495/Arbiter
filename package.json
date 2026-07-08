@@ -26,6 +26,7 @@
     "@arbiter/db": "workspace:*",
     "@arbiter/guardrail": "workspace:*",
     "@arbiter/llm": "workspace:*",
+    "@arbiter/runner": "workspace:*",
     "@arbiter/sanitize": "workspace:*",
     "@arbiter/telemetry": "workspace:*",
     "@arbiter/workflows": "workspace:*",

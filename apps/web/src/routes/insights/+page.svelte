@@ -81,6 +81,30 @@
       {/if}
     </section>
 
+    <section class="card">
+      <h3>Test execution</h3>
+      {#if metrics.execution.runs === 0}
+        <div class="muted">No test runs yet — execute a Playwright or k6 test in the <a href="/runner">Test Runner</a>.</div>
+      {:else}
+        <ul class="kv">
+          <li><span>Runs</span><b>{metrics.execution.runs}</b></li>
+          <li><span>Run pass rate</span><b>{pct(metrics.execution.passRate)}</b></li>
+          <li><span>Cases passed</span><b>{metrics.execution.cases.passed}</b></li>
+          <li class:warn={metrics.execution.cases.failed > 0}><span>Cases failed</span><b>{metrics.execution.cases.failed}</b></li>
+        </ul>
+        {#if metrics.execution.byKind.length}
+          <table style="margin-top:10px">
+            <thead><tr><th>Tool</th><th>Runs</th><th>Passed</th><th>Failed</th></tr></thead>
+            <tbody>
+              {#each metrics.execution.byKind as k}
+                <tr><td>{k.kind}</td><td>{k.runs}</td><td>{k.passed}</td><td>{k.failed}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      {/if}
+    </section>
+
     <p class="ts">Generated {new Date(metrics.generatedAt).toLocaleString()}</p>
   {/if}
 </section>

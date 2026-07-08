@@ -15,7 +15,10 @@ import {
   ProjectSchema,
   ProjectSchemaId,
   ReviewLog,
+  RunnerKind,
+  TestExecution,
   newAuditEventId,
+  newExecutionId,
   newKnowledgeDocId,
   newProjectId,
   newProjectSchemaId,
@@ -27,6 +30,7 @@ import {
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
 import { type GuardrailEngine, buildChunks, buildProjectGraph, computeQualityMetrics, retrieveGraphContext, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
+import { type TestRunner, createRunner } from '@arbiter/runner';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
 import { getWorkflow, listPromptTemplates, listWorkflowsMeta, runWorkflow } from '@arbiter/workflows';
@@ -111,6 +115,8 @@ export interface ServerDeps {
   readonly defaultActorId: UserId;
   /** Key-based auth. When set, /v1 (except /v1/auth/*) requires a valid session. */
   readonly auth?: AuthService;
+  /** Test execution runner. Defaults to config-selected (offline unless ARBITER_RUNNER=real). */
+  readonly runner?: TestRunner;
   readonly webDir?: string;
   /** Defaults to true; tests pass false to keep output readable. */
   readonly logger?: boolean;
@@ -119,6 +125,7 @@ export interface ServerDeps {
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? true });
   const config = getConfig();
+  const runner = deps.runner ?? createRunner(config);
 
   // Key-based session auth. Public: health, status, and the login/logout endpoints.
   // Everything else under /v1 requires a valid session (or the admin master token).
@@ -167,6 +174,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     // Durable = the encrypted de-mask vault persists to Postgres (survives restarts)
     // rather than living only in this process's memory.
     demaskDurable: config.demask === 'encrypted' && config.persistence === 'postgres',
+    runner: config.runner,
   };
 
   // Real OTLP export when an endpoint is configured; best-effort, never blocks a request.
@@ -625,6 +633,45 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       }),
     );
     return { text: rehydrated, resolved: resolvedMap.size, unresolved: tokens.length - resolvedMap.size };
+  });
+
+  // ----- Test execution runner (Playwright / k6) -----
+  // Executes an Arbiter-authored test with the real tool (or the deterministic
+  // offline stub) and records the normalized result so pass/fail feeds Metrics.
+  const ExecuteBody = z.object({
+    kind: RunnerKind,
+    script: z.string().min(1).max(500_000),
+    name: z.string().max(200).optional(),
+  });
+  app.post('/v1/executions', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    const parsed = ExecuteBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    const { kind, script, name } = parsed.data;
+
+    const result = await runner.run({ kind, script, name });
+    const execution = TestExecution.parse({
+      id: newExecutionId(),
+      projectId,
+      kind,
+      name: name ?? `${kind} run`,
+      mode: result.mode,
+      status: result.status,
+      summary: result.summary,
+      cases: result.cases,
+      exitCode: result.exitCode,
+      ...(result.error ? { error: result.error } : {}),
+      createdAt: nowIso(),
+    });
+    await deps.engine.repos.executions.create(execution);
+    return { execution };
+  });
+
+  app.get('/v1/executions', async (request, reply) => {
+    const projectId = await resolveProject(request, reply);
+    if (!projectId) return reply;
+    return { executions: await deps.engine.repos.executions.listByProject(projectId, 50) };
   });
 
   // ----- Review queue -----

@@ -62,6 +62,12 @@ const EnvSchema = z.object({
   // fresh admin access key is logged so there's always a way in.
   ARBITER_ADMIN_EMAIL: z.string().email().default('admin@arbiter.local'),
   ARBITER_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
+
+  // Test execution runner. 'real' spawns the actual Playwright/k6 binary (it
+  // executes user-provided test code, so it is opt-in); 'offline' is a
+  // deterministic stub. Bounded by a wall-clock timeout.
+  ARBITER_RUNNER: z.enum(['real', 'offline']).default('offline'),
+  ARBITER_RUNNER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -73,6 +79,7 @@ export interface ArbiterConfig {
   readonly llm: 'anthropic' | 'kimi' | 'litellm' | 'stub';
   readonly telemetry: 'otlp' | 'noop';
   readonly demask: 'encrypted' | 'ephemeral';
+  readonly runner: 'real' | 'offline';
   readonly models: {
     readonly draft: string;
     readonly default: string;
@@ -128,6 +135,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     llm,
     telemetry: env.OTEL_EXPORTER_OTLP_ENDPOINT ? 'otlp' : 'noop',
     demask,
+    runner: env.ARBITER_RUNNER,
     models,
     kimi: {
       baseUrl: env.KIMI_BASE_URL,

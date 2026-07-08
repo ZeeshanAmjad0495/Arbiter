@@ -23,6 +23,9 @@ importers:
       '@arbiter/llm':
         specifier: workspace:*
         version: link:packages/llm
+      '@arbiter/runner':
+        specifier: workspace:*
+        version: link:packages/runner
       '@arbiter/sanitize':
         specifier: workspace:*
         version: link:packages/sanitize
@@ -62,6 +65,9 @@ importers:
       '@arbiter/guardrail':
         specifier: workspace:*
         version: link:../../packages/guardrail
+      '@arbiter/runner':
+        specifier: workspace:*
+        version: link:../../packages/runner
       '@arbiter/sanitize':
         specifier: workspace:*
         version: link:../../packages/sanitize
@@ -194,6 +200,15 @@ importers:
       zod-to-json-schema:
         specifier: ^3.24.1
         version: 3.25.2(zod@3.25.76)
+
+  packages/runner:
+    dependencies:
+      '@arbiter/config':
+        specifier: workspace:*
+        version: link:../config
+      '@arbiter/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/sanitize:
     dependencies:

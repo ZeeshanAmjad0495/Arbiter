@@ -59,6 +59,7 @@
       group: 'Workspace',
       items: [
         { href: '/review', label: 'Review Queue', ico: 'review' },
+        { href: '/runner', label: 'Test Runner', ico: 'runner' },
         { href: '/knowledge', label: 'Knowledge', ico: 'knowledge' },
         { href: '/graph', label: 'Knowledge Graph', ico: 'graph' },
         { href: '/validate', label: 'Schema Validator', ico: 'validate' },
@@ -79,8 +80,10 @@
     llm: 'Model provider',
     telemetry: 'Tracing',
     demask: 'De-mask store',
+    demaskDurable: 'De-mask durable',
+    runner: 'Test runner',
   };
-  const liveModes = new Set(['postgres', 'presidio', 'anthropic', 'kimi', 'litellm', 'otlp', 'encrypted']);
+  const liveModes = new Set(['postgres', 'presidio', 'anthropic', 'kimi', 'litellm', 'otlp', 'encrypted', 'true', 'real']);
 
   const activePath = $derived($page.url.pathname);
   const currentCat = $derived($page.url.searchParams.get('cat') ?? 'author');
@@ -270,7 +273,7 @@
                 {#each Object.entries(status.modes) as [key, value]}
                   <div class="status-row">
                     <span class="lbl">{STATUS_LABELS[key] ?? key}</span>
-                    <span class="status-val" class:live={liveModes.has(value)}>{value}</span>
+                    <span class="status-val" class:live={liveModes.has(String(value))}>{String(value)}</span>
                   </div>
                 {/each}
               </div>

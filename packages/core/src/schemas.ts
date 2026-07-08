@@ -384,6 +384,60 @@ export const GraphEdge = z.object({
 export type GraphEdge = z.infer<typeof GraphEdge>;
 
 /* ------------------------------------------------------------------ *
+ * Test execution runner — Arbiter AUTHORS tests (Playwright/k6); this   *
+ * captures the result of EXECUTING one via the real tool, normalized so *
+ * pass/fail flows back into the quality metrics. "Integrate, don't      *
+ * reinvent": we run the industry tools and read their reporters.        *
+ * ------------------------------------------------------------------ */
+
+export const ExecutionId = z.string().uuid().brand<'ExecutionId'>();
+export type ExecutionId = z.infer<typeof ExecutionId>;
+export const newExecutionId = (): ExecutionId => ExecutionId.parse(randomUUID());
+
+export const RunnerKind = z.enum(['playwright', 'k6']);
+export type RunnerKind = z.infer<typeof RunnerKind>;
+
+/** Overall verdict: passed (all green), failed (assertions/thresholds broke), error (runner never produced a result). */
+export const ExecutionStatus = z.enum(['passed', 'failed', 'error']);
+export type ExecutionStatus = z.infer<typeof ExecutionStatus>;
+
+export const ExecutionCase = z.object({
+  name: z.string(),
+  status: z.enum(['passed', 'failed', 'skipped']),
+  durationMs: z.number().nonnegative().default(0),
+  /** Failure detail (assertion message / threshold). Trimmed; never the script body. */
+  message: z.string().optional(),
+});
+export type ExecutionCase = z.infer<typeof ExecutionCase>;
+
+export const ExecutionSummary = z.object({
+  total: z.number().int().nonnegative(),
+  passed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  durationMs: z.number().nonnegative(),
+});
+export type ExecutionSummary = z.infer<typeof ExecutionSummary>;
+
+export const TestExecution = z.object({
+  id: ExecutionId,
+  projectId: ProjectId,
+  kind: RunnerKind,
+  /** Human label for the run (e.g. artifact title or file name). */
+  name: z.string(),
+  /** 'real' = spawned the actual tool; 'offline' = deterministic stub (no binary). */
+  mode: z.enum(['real', 'offline']),
+  status: ExecutionStatus,
+  summary: ExecutionSummary,
+  cases: z.array(ExecutionCase).default([]),
+  exitCode: z.number().int().nullable().default(null),
+  /** Runner-level failure (tool missing, timeout, unparseable output) — distinct from a test that failed. */
+  error: z.string().optional(),
+  createdAt: z.string().datetime(),
+});
+export type TestExecution = z.infer<typeof TestExecution>;
+
+/* ------------------------------------------------------------------ *
  * The end-to-end outcome of one pass through the guardrail pipeline.  *
  * ------------------------------------------------------------------ */
 

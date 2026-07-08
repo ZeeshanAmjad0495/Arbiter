@@ -113,6 +113,13 @@ export interface QualityMetrics {
   byWorkflow: { type: string; count: number; approved: number; rejected: number }[];
   review: { decided: number; approvalRate: number | null; editRate: number | null; medianDwellMs: number | null };
   grounding: { validated: number; withViolations: number; violationRate: number | null };
+  execution: {
+    runs: number;
+    passRate: number | null;
+    cases: { passed: number; failed: number; skipped: number };
+    byKind: { kind: string; runs: number; passed: number; failed: number }[];
+    lastStatus: string | null;
+  };
   generatedAt: string;
 }
 
@@ -326,6 +333,44 @@ export async function buildGraph(): Promise<{ nodes: number; edges: number }> {
   return (await res.json()).built;
 }
 
+export interface ExecutionCase {
+  name: string;
+  status: 'passed' | 'failed' | 'skipped';
+  durationMs: number;
+  message?: string;
+}
+export interface TestExecution {
+  id: string;
+  kind: 'playwright' | 'k6';
+  name: string;
+  mode: 'real' | 'offline';
+  status: 'passed' | 'failed' | 'error';
+  summary: { total: number; passed: number; failed: number; skipped: number; durationMs: number };
+  cases: ExecutionCase[];
+  exitCode: number | null;
+  error?: string;
+  createdAt: string;
+}
+
+export async function runExecution(body: { kind: 'playwright' | 'k6'; script: string; name?: string }): Promise<TestExecution> {
+  const res = await apiFetch('/v1/executions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Run failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()).execution;
+}
+
+export async function listExecutions(): Promise<TestExecution[]> {
+  const res = await apiFetch('/v1/executions');
+  if (!res.ok) throw new Error(`executions ${res.status}`);
+  return (await res.json()).executions;
+}
+
 export interface KnowledgeDoc {
   id: string;
   title: string;
@@ -359,7 +404,7 @@ export async function deleteKnowledge(id: string): Promise<void> {
 }
 
 export interface StatusInfo {
-  modes: { persistence: string; sanitizer: string; llm: string; telemetry: string; demask: string };
+  modes: { persistence: string; sanitizer: string; llm: string; telemetry: string; demask: string; demaskDurable?: boolean; runner?: string };
   models: { draft: string; default: string; judge: string };
   authEnabled?: boolean;
 }

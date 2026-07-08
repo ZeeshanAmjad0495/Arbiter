@@ -14,6 +14,7 @@ import {
   ProjectSchema,
   ReviewLog,
   Session,
+  TestExecution,
   User,
   type WorkflowRunId,
 } from '@arbiter/core';
@@ -21,6 +22,7 @@ import type {
   ArtifactRepository,
   AuditRepository,
   DemaskRepository,
+  ExecutionRepository,
   KnowledgeRepository,
   GraphRepository,
   ProjectRepository,
@@ -495,6 +497,41 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     },
   };
 
+  const executions: ExecutionRepository = {
+    async create(exec) {
+      return withProjectTx(pool, exec.projectId, async (client) => {
+        await client.query(
+          `INSERT INTO executions (id, project_id, kind, name, mode, status, summary, cases, exit_code, error, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            exec.id,
+            exec.projectId,
+            exec.kind,
+            exec.name,
+            exec.mode,
+            exec.status,
+            JSON.stringify(exec.summary),
+            JSON.stringify(exec.cases),
+            exec.exitCode,
+            exec.error ?? null,
+            exec.createdAt,
+          ],
+        );
+        return exec;
+      });
+    },
+    async listByProject(projectId, limit = 50) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, kind, name, mode, status, summary, cases, exit_code, error, created_at
+           FROM executions WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`,
+          [projectId, limit],
+        );
+        return rows.map(rowToExecution);
+      });
+    },
+  };
+
   return {
     kind: 'postgres',
     projects,
@@ -507,6 +544,7 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
     knowledge,
     schemas,
     demask,
+    executions,
     async applyReviewDecision(write) {
       return withProjectTx(pool, write.projectId, async (client) => {
         const { rows } =
@@ -624,6 +662,22 @@ function rowToGraphEdge(row: Record<string, unknown>): GraphEdge {
     targetId: row.target_id,
     relation: row.relation,
     weight: row.weight,
+    createdAt: iso(row.created_at as Date | string),
+  });
+}
+
+function rowToExecution(row: Record<string, unknown>): TestExecution {
+  return TestExecution.parse({
+    id: row.id,
+    projectId: row.project_id,
+    kind: row.kind,
+    name: row.name,
+    mode: row.mode,
+    status: row.status,
+    summary: row.summary, // node-pg auto-parses jsonb
+    cases: row.cases,
+    exitCode: row.exit_code,
+    ...(row.error != null ? { error: row.error } : {}),
     createdAt: iso(row.created_at as Date | string),
   });
 }

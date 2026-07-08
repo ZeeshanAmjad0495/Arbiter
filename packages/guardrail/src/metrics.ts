@@ -32,6 +32,16 @@ export interface QualityMetrics {
     /** withViolations / validated, or null when nothing has been validated. */
     violationRate: number | null;
   };
+  /** Test-execution runner results — the "do the authored tests actually pass" signal. */
+  execution: {
+    runs: number;
+    /** passed / (passed + failed), or null when nothing has run to a verdict. Runner-errors excluded. */
+    passRate: number | null;
+    /** Total case-level pass/fail across all runs (finer-grained than run verdicts). */
+    cases: { passed: number; failed: number; skipped: number };
+    byKind: { kind: string; runs: number; passed: number; failed: number }[];
+    lastStatus: string | null;
+  };
   generatedAt: string;
 }
 
@@ -52,6 +62,7 @@ export async function computeQualityMetrics(repos: RepositoryBundle, projectId: 
   const artifacts = await repos.artifacts.listByStatus(projectId, ALL_STATUSES);
   const reviews = await repos.reviews.listByProject(projectId);
   const audit = await repos.audit.listByProject(projectId);
+  const runs = await repos.executions.listByProject(projectId, 500);
 
   const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])) as Record<ArtifactStatus, number>;
   const byRiskTier = Object.fromEntries(ALL_TIERS.map((t) => [t, 0])) as Record<RiskTier, number>;
@@ -78,6 +89,22 @@ export async function computeQualityMetrics(repos: RepositoryBundle, projectId: 
     return typeof v === 'number' && v > 0;
   }).length;
 
+  // Execution runner: run-level verdicts + case-level tallies, and a per-kind split.
+  const decidedRuns = runs.filter((r) => r.status === 'passed' || r.status === 'failed');
+  const passedRuns = decidedRuns.filter((r) => r.status === 'passed').length;
+  const execCases = runs.reduce(
+    (acc, r) => ({ passed: acc.passed + r.summary.passed, failed: acc.failed + r.summary.failed, skipped: acc.skipped + r.summary.skipped }),
+    { passed: 0, failed: 0, skipped: 0 },
+  );
+  const kindMap = new Map<string, { runs: number; passed: number; failed: number }>();
+  for (const r of runs) {
+    const k = kindMap.get(r.kind) ?? { runs: 0, passed: 0, failed: 0 };
+    k.runs += 1;
+    if (r.status === 'passed') k.passed += 1;
+    if (r.status === 'failed') k.failed += 1;
+    kindMap.set(r.kind, k);
+  }
+
   return {
     projectId,
     totals: { artifacts: artifacts.length, reviews: reviews.length },
@@ -96,6 +123,13 @@ export async function computeQualityMetrics(repos: RepositoryBundle, projectId: 
       validated: validateEvents.length,
       withViolations,
       violationRate: ratio(withViolations, validateEvents.length),
+    },
+    execution: {
+      runs: runs.length,
+      passRate: ratio(passedRuns, decidedRuns.length),
+      cases: execCases,
+      byKind: [...kindMap.entries()].map(([kind, k]) => ({ kind, ...k })).sort((a, b) => b.runs - a.runs),
+      lastStatus: runs[0]?.status ?? null, // listByProject is newest-first
     },
     generatedAt: nowIso(),
   };

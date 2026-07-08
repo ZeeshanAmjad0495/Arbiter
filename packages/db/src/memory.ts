@@ -15,6 +15,7 @@ import type {
   ReviewLog,
   Session,
   SessionId,
+  TestExecution,
   User,
   UserId,
   WorkflowRunId,
@@ -23,6 +24,7 @@ import type {
   ArtifactRepository,
   AuditRepository,
   DemaskRepository,
+  ExecutionRepository,
   GraphRepository,
   KnowledgeRepository,
   ProjectRepository,
@@ -251,6 +253,20 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
   };
 
+  const executions: TestExecution[] = [];
+  const executionRepo: ExecutionRepository = {
+    async create(exec: TestExecution) {
+      executions.push(exec);
+      return exec;
+    },
+    async listByProject(projectId: ProjectId, limit = 50) {
+      return executions
+        .filter((e) => e.projectId === projectId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit);
+    },
+  };
+
   return {
     kind: 'memory',
     projects: projectRepo,
@@ -263,6 +279,7 @@ export function createMemoryRepositories(): RepositoryBundle {
     knowledge: knowledgeRepo,
     schemas: schemaRepo,
     demask: demaskRepo,
+    executions: executionRepo,
     async applyReviewDecision(write) {
       const updated = await artifactRepo.update(write.projectId, write.artifactId, {
         status: write.status,

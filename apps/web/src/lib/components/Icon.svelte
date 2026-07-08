@@ -23,6 +23,7 @@
     RefreshCw,
     Trash2,
     Circle,
+    Play,
   } from '@lucide/svelte';
 
   interface Props {
@@ -57,6 +58,7 @@
     refresh: RefreshCw,
     trash: Trash2,
     search: Search,
+    runner: Play,
     dot: Circle,
   };
 

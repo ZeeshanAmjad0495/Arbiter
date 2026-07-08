@@ -15,6 +15,7 @@ import type {
   ReviewLog,
   Session,
   SessionId,
+  TestExecution,
   User,
   UserId,
   WorkflowRunId,
@@ -125,6 +126,13 @@ export interface DemaskRepository {
   count(projectId: ProjectId): Promise<number>;
 }
 
+/** Per-project test-execution history (Playwright/k6 runner results). */
+export interface ExecutionRepository {
+  create(exec: TestExecution): Promise<TestExecution>;
+  /** Most-recent first; capped by `limit` (default 50). */
+  listByProject(projectId: ProjectId, limit?: number): Promise<TestExecution[]>;
+}
+
 export interface RepositoryBundle {
   readonly kind: 'postgres' | 'memory';
   readonly projects: ProjectRepository;
@@ -137,6 +145,7 @@ export interface RepositoryBundle {
   readonly schemas: SchemaRepository;
   readonly graph: GraphRepository;
   readonly demask: DemaskRepository;
+  readonly executions: ExecutionRepository;
   /**
    * Apply a review decision as ONE transaction so a governed state change can
    * never be left without its audit row (the 'every action audited' invariant).
