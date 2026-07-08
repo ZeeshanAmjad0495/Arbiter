@@ -62,6 +62,10 @@ const groundingBlocks: Grader = {
       ? null
       : `expected blockedExport+needs_changes, got blocked=${o.grounding.blockedExport} decision=${o.review.decision}`,
 };
+const sanitizeBlocks: Grader = {
+  name: 'a credential in the input hard-blocks the run',
+  check: (o) => (o.sanitization.blocked ? null : 'expected sanitization to hard-block on a credential'),
+};
 
 interface EvalCase {
   readonly name: string;
@@ -500,6 +504,35 @@ const CASES: EvalCase[] = [
     context: [{ title: 'unrelated', content: 'Some text with no requirement identifiers at all.' }],
     graders: [groundingBlocks],
   },
+
+  /* ---------------------------------------------------------------------- *
+   * Depth: the security invariants must hold for EVERY workflow, not just   *
+   * the ones with bespoke cases. These sweep PII-redaction and credential-  *
+   * hard-block across a broad set of workflows with workflow-agnostic       *
+   * graders, so a regression in any workflow's sanitize path is caught.     *
+   * ---------------------------------------------------------------------- */
+  // PII in the input is redacted before the model, and the workflow still produces
+  // an artifact (redaction never blocks — only credentials do).
+  ...['bug-report', 'synthetic-test-data', 'requirement-analyzer', 'edge-case-challenger', 'security-abuse-cases', 'nfr-analyzer', 'incident-postmortem', 'ci-failure-triage'].map(
+    (workflow): EvalCase => ({
+      name: `${workflow}: PII in the input is redacted before the model`,
+      workflow,
+      requirement: 'Reported by member jane.doe@acme.com (SSN 123-45-6789, card 4111 1111 1111 1111, phone (555) 123-4567) about coverage_status on POST /v1/login.',
+      context: [SCHEMA_CTX],
+      graders: [notNull, noRawPii(['jane.doe@acme.com', '123-45-6789', '4111 1111 1111 1111'])],
+    }),
+  ),
+  // A credential ANYWHERE in the input hard-blocks the run — for every workflow.
+  // The secret is assembled at runtime so no literal sits in source (push protection).
+  ...['test-case', 'bug-report', 'api-test-generator', 'synthetic-test-data'].map(
+    (workflow): EvalCase => ({
+      name: `${workflow}: a credential in the input hard-blocks`,
+      workflow,
+      requirement: `Automate login with the production key ${['sk', 'live', '9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c'].join('_')} and confirm coverage_status.`,
+      context: [SCHEMA_CTX],
+      graders: [sanitizeBlocks],
+    }),
+  ),
 ];
 
 async function main(): Promise<void> {
