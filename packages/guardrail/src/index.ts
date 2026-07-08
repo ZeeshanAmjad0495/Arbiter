@@ -6,5 +6,6 @@ export * from './metrics';
 export * from './writegate';
 export * from './github';
 export * from './knowledge';
+export * from './embeddings';
 export * from './graph';
 export { createGuardrailEngine } from './factory';

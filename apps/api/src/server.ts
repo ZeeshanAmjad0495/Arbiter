@@ -29,7 +29,19 @@ import {
   unifiedDiff,
 } from '@arbiter/core';
 import type { UserId } from '@arbiter/core';
-import { type GuardrailEngine, buildChunks, buildProjectGraph, computeQualityMetrics, retrieveGraphContext, retrieveKnowledge, toKnowledgeContext } from '@arbiter/guardrail';
+import {
+  type GuardrailEngine,
+  buildChunks,
+  buildProjectGraph,
+  computeQualityMetrics,
+  embedOne,
+  embedTexts,
+  embeddingsEnabled,
+  retrieveGraphContext,
+  retrieveKnowledge,
+  toKnowledgeContext,
+} from '@arbiter/guardrail';
+import type { KnowledgeChunk } from '@arbiter/core';
 import { type TestRunner, createRunner } from '@arbiter/runner';
 import { sanitizeJson } from '@arbiter/sanitize';
 import { InMemoryTracer, OtlpHttpExporter, renderTrace } from '@arbiter/telemetry';
@@ -128,6 +140,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? true });
   const config = getConfig();
   const runner = deps.runner ?? createRunner(config);
+
+  // Dense retrieval (opt-in, free/local embeddings). When enabled, new chunks get an
+  // embedding and retrieval searches by vector similarity; otherwise TF-IDF is used.
+  const dense = embeddingsEnabled(config);
+  const denseOpts = dense ? { embed: embedOne } : undefined;
+  async function embedChunks(projectId: ProjectId, chunks: KnowledgeChunk[]): Promise<void> {
+    if (!dense || chunks.length === 0) return;
+    const vecs = await embedTexts(chunks.map((c) => c.content));
+    await Promise.all(chunks.map((c, i) => (vecs[i] ? deps.engine.repos.knowledge.setChunkEmbedding(projectId, c.id, vecs[i]!) : Promise.resolve())));
+  }
 
   // Key-based session auth. Public: health, status, and the login/logout endpoints.
   // Everything else under /v1 requires a valid session (or the admin master token).
@@ -303,6 +325,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (context && context.trim()) {
       const safe = (await deps.engine.sanitizer.sanitize(context, project.id)).sanitizedText;
       const docId = newKnowledgeDocId();
+      const chunks = buildChunks(project.id, docId, safe);
       await deps.engine.repos.knowledge.addDocument(
         KnowledgeDocument.parse({
           id: docId,
@@ -313,8 +336,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
           classification,
           createdAt: nowIso(),
         }),
-        buildChunks(project.id, docId, safe),
+        chunks,
       );
+      await embedChunks(project.id, chunks);
     }
     // Save any provided schemas.
     for (const s of parsedSchemas) {
@@ -446,7 +470,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     // so generation is project-aware and cited facts can ground against them.
     let context = body.context;
     if (body.useKnowledge) {
-      const retrieved = await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4);
+      const retrieved = await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4, denseOpts);
       context = [...toKnowledgeContext(retrieved), ...context];
     }
     if (body.useGraph) {
@@ -511,7 +535,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
     let context = body.context;
     if (body.useKnowledge) {
-      context = [...toKnowledgeContext(await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4)), ...context];
+      context = [...toKnowledgeContext(await retrieveKnowledge(deps.engine.repos, projectId, body.requirement, 4, denseOpts)), ...context];
     }
     if (body.useGraph) {
       context = [...(await retrieveGraphContext(deps.engine.repos, projectId, body.requirement)), ...context];
@@ -594,6 +618,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     });
     const chunks = buildChunks(projectId, docId, safe);
     await deps.engine.repos.knowledge.addDocument(doc, chunks);
+    await embedChunks(projectId, chunks);
     return reply.status(201).send({ document: { id: doc.id, title: doc.title, chunks: chunks.length } });
   });
 

@@ -410,6 +410,23 @@ export function createPostgresRepositories(databaseUrl: string): RepositoryBundl
         return rows.map(rowToKnowledgeChunk);
       });
     },
+    async setChunkEmbedding(projectId, chunkId, embedding) {
+      await withProjectTx(pool, projectId, (client) =>
+        // pgvector reads the vector from its text form `[a,b,c]`.
+        client.query('UPDATE knowledge_chunks SET embedding = $3::vector WHERE project_id = $1 AND id = $2', [projectId, chunkId, `[${embedding.join(',')}]`]),
+      );
+    },
+    async searchByEmbedding(projectId, embedding, k) {
+      return withProjectTx(pool, projectId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, project_id, doc_id, ordinal, content, created_at, 1 - (embedding <=> $2::vector) AS score
+           FROM knowledge_chunks WHERE project_id = $1 AND embedding IS NOT NULL
+           ORDER BY embedding <=> $2::vector LIMIT $3`,
+          [projectId, `[${embedding.join(',')}]`, k],
+        );
+        return rows.map((r) => ({ chunk: rowToKnowledgeChunk(r), score: Number(r.score) }));
+      });
+    },
   };
 
   const graph: GraphRepository = {

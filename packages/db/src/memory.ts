@@ -6,6 +6,7 @@ import type {
   GraphEdge,
   GraphNode,
   KnowledgeChunk,
+  KnowledgeChunkId,
   KnowledgeDocId,
   KnowledgeDocument,
   Project,
@@ -135,6 +136,7 @@ export function createMemoryRepositories(): RepositoryBundle {
 
   const knowledgeDocs = new Map<string, KnowledgeDocument>();
   const knowledgeChunks: KnowledgeChunk[] = [];
+  const chunkEmbeddings = new Map<string, number[]>();
   const knowledgeRepo: KnowledgeRepository = {
     async addDocument(doc: KnowledgeDocument, chunks: KnowledgeChunk[]) {
       knowledgeDocs.set(doc.id, doc);
@@ -157,6 +159,22 @@ export function createMemoryRepositories(): RepositoryBundle {
     },
     async listChunks(projectId: ProjectId) {
       return knowledgeChunks.filter((c) => c.projectId === projectId);
+    },
+    async setChunkEmbedding(_projectId: ProjectId, chunkId: KnowledgeChunkId, embedding: number[]) {
+      chunkEmbeddings.set(chunkId, embedding);
+    },
+    async searchByEmbedding(projectId: ProjectId, embedding: number[], k: number) {
+      // Vectors are unit-normalized, so cosine similarity == dot product.
+      const scored = knowledgeChunks
+        .filter((c) => c.projectId === projectId && chunkEmbeddings.has(c.id))
+        .map((chunk) => {
+          const emb = chunkEmbeddings.get(chunk.id)!;
+          let dot = 0;
+          for (let i = 0; i < embedding.length; i++) dot += embedding[i]! * (emb[i] ?? 0);
+          return { chunk, score: dot };
+        })
+        .sort((a, b) => b.score - a.score);
+      return scored.slice(0, k);
     },
   };
 

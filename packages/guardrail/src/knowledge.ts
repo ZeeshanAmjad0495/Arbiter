@@ -94,13 +94,23 @@ export function scoreChunks(query: string, chunks: readonly KnowledgeChunk[], k 
     .slice(0, k);
 }
 
-/** Retrieve the top-k relevant chunks for a query from a project's knowledge. */
+/**
+ * Retrieve the top-k relevant chunks for a query. Lexical TF-IDF by default; when
+ * an `embed` function is supplied (dense retrieval enabled) it embeds the query and
+ * searches by vector similarity instead — same seam, config-free here (the caller
+ * owns the embedder, so this stays free of the heavy embeddings dependency).
+ */
 export async function retrieveKnowledge(
   repos: RepositoryBundle,
   projectId: ProjectId,
   query: string,
   k = 4,
+  opts?: { embed?: (query: string) => Promise<number[]> },
 ): Promise<RetrievedChunk[]> {
+  if (opts?.embed) {
+    const vector = await opts.embed(query);
+    if (vector.length > 0) return repos.knowledge.searchByEmbedding(projectId, vector, k);
+  }
   const chunks = await repos.knowledge.listChunks(projectId);
   return scoreChunks(query, chunks, k);
 }

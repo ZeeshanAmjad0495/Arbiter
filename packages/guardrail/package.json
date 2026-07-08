@@ -13,6 +13,7 @@
     "@arbiter/llm": "workspace:*",
     "@arbiter/sanitize": "workspace:*",
     "@arbiter/telemetry": "workspace:*",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "@huggingface/transformers": "^3.3.0"
   }
 }

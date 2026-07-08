@@ -80,6 +80,11 @@ const EnvSchema = z.object({
   // deterministic stub. Bounded by a wall-clock timeout.
   ARBITER_RUNNER: z.enum(['real', 'offline']).default('offline'),
   ARBITER_RUNNER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+
+  // Dense retrieval. `local` computes embeddings in-process with a free, offline
+  // sentence-transformers model (@huggingface/transformers) and searches pgvector;
+  // `off` (default) keeps the deterministic TF-IDF path (no model download).
+  ARBITER_EMBEDDINGS: z.enum(['local', 'off']).default('off'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -92,6 +97,7 @@ export interface ArbiterConfig {
   readonly telemetry: 'otlp' | 'noop';
   readonly demask: 'encrypted' | 'ephemeral';
   readonly runner: 'real' | 'offline';
+  readonly embeddings: 'local' | 'off';
   readonly models: {
     readonly draft: string;
     readonly default: string;
@@ -154,6 +160,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     telemetry: env.OTEL_EXPORTER_OTLP_ENDPOINT ? 'otlp' : 'noop',
     demask,
     runner: env.ARBITER_RUNNER,
+    embeddings: env.ARBITER_EMBEDDINGS,
     models,
     kimi: {
       baseUrl: env.KIMI_BASE_URL,

@@ -6,6 +6,7 @@ import type {
   GraphEdge,
   GraphNode,
   KnowledgeChunk,
+  KnowledgeChunkId,
   KnowledgeDocId,
   KnowledgeDocument,
   Project,
@@ -89,6 +90,10 @@ export interface KnowledgeRepository {
   deleteDocument(projectId: ProjectId, docId: KnowledgeDocId): Promise<boolean>;
   /** All chunks for a project (retrieval scores over these in-process today). */
   listChunks(projectId: ProjectId): Promise<KnowledgeChunk[]>;
+  /** Attach a dense embedding to a chunk (dense-retrieval path). */
+  setChunkEmbedding(projectId: ProjectId, chunkId: KnowledgeChunkId, embedding: number[]): Promise<void>;
+  /** Top-k chunks by cosine similarity to `embedding` (unit vectors → score in 0..1). */
+  searchByEmbedding(projectId: ProjectId, embedding: number[], k: number): Promise<{ chunk: KnowledgeChunk; score: number }[]>;
 }
 
 /** Per-project knowledge graph (project-scoped). Rebuilt wholesale on build. */
