@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { getArtifact, listReviews, submitReview, type Artifact, type ReviewItem, type ReviewLog } from '$lib/api';
+  import DocView from '$lib/components/DocView.svelte';
+
+  /** Reviewers read the rendered document; 'json' is the escape hatch for editing. */
+  let mode = $state<'read' | 'json'>('read');
+  let detailEl: HTMLElement | undefined = $state();
 
   let items = $state<ReviewItem[]>([]);
   let loadingList = $state(true);
@@ -16,6 +21,16 @@
   let submitting = $state('');
   let flash = $state('');
   let lastDiff = $state('');
+
+  /** What the rendered view shows: the edited content when valid, else the original. */
+  const parsedForView = $derived.by(() => {
+    if (editedJson === originalJson) return artifact?.content ?? null;
+    try {
+      return JSON.parse(editedJson);
+    } catch {
+      return artifact?.content ?? null;
+    }
+  });
 
   async function loadList() {
     loadingList = true;
@@ -34,6 +49,7 @@
     flash = '';
     lastDiff = '';
     jsonError = '';
+    mode = 'read';
     try {
       const detail = await getArtifact(id);
       artifact = detail.artifact;
@@ -41,6 +57,10 @@
       originalJson = JSON.stringify(detail.artifact.content, null, 2);
       editedJson = originalJson;
       openedAtMs = Date.now();
+      // When the columns stack (narrow screens) the detail renders below the long
+      // queue — bring it into view instead of making the reviewer scroll back up.
+      await tick();
+      if (window.matchMedia('(max-width: 900px)').matches) detailEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
       jsonError = e instanceof Error ? e.message : String(e);
     }
@@ -109,7 +129,7 @@
     {#if flash}<p class="banner good" style="margin-top:12px">{flash}</p>{/if}
   </section>
 
-  <section>
+  <section class="detail-col" bind:this={detailEl}>
     {#if artifact}
       <article class="card">
         <h3>
@@ -119,8 +139,23 @@
             {artifact.riskTier} risk
           </span>
         </h3>
-        <p class="hint">Edit the content below if needed, then choose a decision. Your changes are saved as feedback.</p>
-        <textarea class="json-edit mono" rows="16" bind:value={editedJson}></textarea>
+        <div class="mode-row">
+          <p class="hint" style="margin:0">
+            {mode === 'read' ? 'Read the draft, then choose a decision.' : 'Edit the content if needed — your changes are saved as feedback.'}
+          </p>
+          <div class="modes" role="group" aria-label="Document view">
+            <button class="mode" class:on={mode === 'read'} aria-pressed={mode === 'read'} onclick={() => (mode = 'read')}>Document</button>
+            <button class="mode" class:on={mode === 'json'} aria-pressed={mode === 'json'} onclick={() => (mode = 'json')}>Edit JSON</button>
+          </div>
+        </div>
+        {#if mode === 'read'}
+          <div class="doc">
+            {#if editedJson !== originalJson}<p class="hint edited">Showing your edited content.</p>{/if}
+            <DocView value={parsedForView} />
+          </div>
+        {:else}
+          <textarea class="json-edit mono" rows="16" bind:value={editedJson}></textarea>
+        {/if}
         {#if jsonError}<p class="error">{jsonError}</p>{/if}
         <div class="review-actions">
           <button class="primary" style="width:auto" disabled={!!submitting} onclick={() => decide('approved')}>
@@ -156,6 +191,81 @@
 </section>
 
 <style>
+  /* Two independently-scrolling columns pinned to the viewport: with a long queue the
+     page itself no longer scrolls, so picking an item shows the document immediately
+     instead of leaving it above the fold. Falls back to normal flow when stacked. */
+  .layout {
+    align-items: start;
+    /* header + main's vertical padding — sized so the page itself never scrolls. */
+    height: calc(100dvh - 134px);
+  }
+  .input-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 100%;
+  }
+  .findings {
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+    padding-right: 4px;
+  }
+  .detail-col {
+    max-height: 100%;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  @media (max-width: 900px) {
+    .layout,
+    .input-panel,
+    .detail-col {
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+    .findings {
+      max-height: 60vh;
+    }
+  }
+  .mode-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .modes {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    flex: none;
+  }
+  .mode {
+    border: none;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+    padding: 5px 10px;
+    cursor: pointer;
+  }
+  .mode.on {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-weight: 600;
+  }
+  .doc {
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .edited {
+    margin: 0 0 10px;
+    color: var(--accent-strong);
+  }
   .queue-item {
     text-align: left;
     width: 100%;
