@@ -14,6 +14,11 @@ export { zodMock } from './zod-mock';
 export * from './judge';
 
 export function createLlmProvider(config: ArbiterConfig): LlmProvider {
+  // DeepSeek is plain OpenAI-compatible (no Moonshot `thinking` field — reasoning is
+  // selected via the model name), so it reuses the generic compat provider.
+  if (config.llm === 'deepseek' && config.env.DEEP_SEEK_API_KEY) {
+    return new OpenAICompatProvider(config.env.DEEP_SEEK_API_KEY, config.deepseek.baseUrl, config.deepseek.model);
+  }
   if (config.llm === 'kimi' && config.env.KIMI_API_KEY) {
     return new KimiLlmProvider(config.env.KIMI_API_KEY, config.kimi);
   }

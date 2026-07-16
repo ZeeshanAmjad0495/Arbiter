@@ -29,6 +29,10 @@ const MIN_REQUEST_INTERVAL_MS = 130;
 // generous headroom — the throttle + concurrency cap keep us within the rate limits.
 const RUN_TIMEOUT_MS = 240_000;
 const smokeOnly = process.argv.includes('--smoke');
+/** --persist: write the run to the real Postgres so the drafts show up in the web UI. */
+const persist = process.argv.includes('--persist');
+const PROJECT_NAME = 'Zuub E2E';
+const E2E_EMAIL = 'e2e@zuub.test';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let lastReqAt = 0;
@@ -82,23 +86,35 @@ async function pool<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Pr
 
 async function main(): Promise<void> {
   process.loadEnvFile?.('.env');
-  // Keep the real LLM provider + keys from .env, but isolate the run in an ephemeral
-  // in-memory store so it never touches (or pollutes) the real database. Deleting from
-  // process.env itself guarantees every config read (ours or internal) selects memory.
-  delete process.env.DATABASE_URL;
+  // Default: isolate the run in an ephemeral in-memory store so it never pollutes the
+  // real database. With --persist the run writes to the real Postgres under a named
+  // project, so the generated drafts are reviewable in the web UI (Review Queue).
+  if (!persist) delete process.env.DATABASE_URL;
   const config = loadConfig();
   if (config.llm === 'stub') {
-    console.error('✗ No real LLM provider configured. Set KIMI_API_KEY, ANTHROPIC_API_KEY or LITELLM_API_KEY in .env.');
+    console.error('✗ No real LLM provider configured. Set DEEP_SEEK_API_KEY, KIMI_API_KEY, ANTHROPIC_API_KEY or LITELLM_API_KEY in .env.');
     process.exit(1);
   }
-  console.log(`Persistence: ${config.persistence} (ephemeral run)`);
+  if (persist && config.persistence !== 'postgres') {
+    console.error('✗ --persist needs DATABASE_URL set in .env (so the run is visible in the UI).');
+    process.exit(1);
+  }
+  console.log(`Persistence: ${config.persistence}${persist ? ` (project "${PROJECT_NAME}" — visible in the UI)` : ' (ephemeral run)'}`);
   console.log(`Provider: ${config.llm} · models: draft=${config.models.draft} default=${config.models.default} judge=${config.models.judge}\n`);
 
   const engine = createGuardrailEngine({ config });
-  const projectId = newProjectId();
-  const actorId = newUserId();
-  await engine.repos.projects.upsert(Project.parse({ id: projectId, name: 'Zuub E2E', classification: 'internal', createdAt: nowIso() }));
-  await engine.repos.users.upsert(User.parse({ id: actorId, email: 'e2e@zuub.test', role: 'qa', createdAt: nowIso() }));
+  // Reuse the project/user across runs when persisting — creating fresh ids each time
+  // would spawn duplicate projects and collide on the unique user email.
+  const existingProject = (await engine.repos.projects.list()).find((p) => p.name === PROJECT_NAME);
+  const projectId = existingProject?.id ?? newProjectId();
+  if (!existingProject) {
+    await engine.repos.projects.upsert(Project.parse({ id: projectId, name: PROJECT_NAME, classification: 'internal', createdAt: nowIso() }));
+  }
+  const existingUser = await engine.repos.users.getByEmail(E2E_EMAIL);
+  const actorId = existingUser?.id ?? newUserId();
+  if (!existingUser) {
+    await engine.repos.users.upsert(User.parse({ id: actorId, email: E2E_EMAIL, role: 'qa', createdAt: nowIso() }));
+  }
   const app = buildServer({ engine, defaultProjectId: projectId, defaultActorId: actorId, logger: false });
   await app.ready();
 
@@ -106,9 +122,15 @@ async function main(): Promise<void> {
     app.inject({ method: 'POST', url: `/v1/workflows/${flow}/run`, payload: { requirement, riskTier, useKnowledge: true, useGraph: true } });
 
   // Ingest the corpus + build the graph so RAG/GraphRAG have something to retrieve.
-  console.log('Ingesting Zuub corpus + building graph…');
-  for (const t of ZUUB_TICKETS) {
-    await app.inject({ method: 'POST', url: '/v1/knowledge', payload: { title: `${t.key} — ${t.title}`, content: t.content, sourceType: 'jira', classification: 'internal' } });
+  // Skip re-ingest when the project already holds the corpus (repeat --persist runs).
+  const alreadyIngested = (await engine.repos.knowledge.listDocuments(projectId)).length >= ZUUB_TICKETS.length;
+  if (alreadyIngested) {
+    console.log('Corpus already present — skipping ingest.');
+  } else {
+    console.log('Ingesting Zuub corpus + building graph…');
+    for (const t of ZUUB_TICKETS) {
+      await app.inject({ method: 'POST', url: '/v1/knowledge', payload: { title: `${t.key} — ${t.title}`, content: t.content, sourceType: 'jira', classification: 'internal' } });
+    }
   }
   await app.inject({ method: 'POST', url: '/v1/graph/build' });
 

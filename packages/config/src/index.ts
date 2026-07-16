@@ -25,6 +25,14 @@ const EnvSchema = z.object({
   ARBITER_MODEL_DEFAULT: z.string().default('claude-sonnet-5'),
   ARBITER_MODEL_JUDGE: z.string().default('claude-opus-4-8'),
 
+  // DeepSeek — OpenAI-compatible chat completions. Highest precedence: when
+  // DEEP_SEEK_API_KEY is set it is the generation provider. Reasoning is chosen via
+  // the MODEL (e.g. deepseek-reasoner), not a request flag, so there is no
+  // `thinking` field to send (unlike Kimi).
+  DEEP_SEEK_API_KEY: z.string().optional(),
+  DEEP_SEEK_BASE_URL: z.string().url().default('https://api.deepseek.com'),
+  DEEP_SEEK_MODEL: z.string().default('deepseek-chat'),
+
   // Kimi (Moonshot AI) — OpenAI-compatible. When KIMI_API_KEY is set it takes
   // precedence over Anthropic. Defaults to the latest thinking model.
   KIMI_API_KEY: z.string().optional(),
@@ -102,7 +110,7 @@ export interface ArbiterConfig {
   readonly env: Env;
   readonly persistence: 'postgres' | 'memory';
   readonly sanitizer: 'presidio' | 'regex';
-  readonly llm: 'anthropic' | 'kimi' | 'litellm' | 'stub';
+  readonly llm: 'deepseek' | 'anthropic' | 'kimi' | 'litellm' | 'stub';
   readonly telemetry: 'otlp' | 'noop';
   readonly demask: 'encrypted' | 'ephemeral';
   readonly runner: 'real' | 'offline';
@@ -111,6 +119,10 @@ export interface ArbiterConfig {
     readonly draft: string;
     readonly default: string;
     readonly judge: string;
+  };
+  readonly deepseek: {
+    readonly baseUrl: string;
+    readonly model: string;
   };
   readonly kimi: {
     readonly baseUrl: string;
@@ -148,20 +160,24 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     });
   }
   const env = parsed.data;
-  // Precedence: Kimi > Anthropic > LiteLLM > offline stub.
-  const llm: ArbiterConfig['llm'] = env.KIMI_API_KEY
-    ? 'kimi'
-    : env.ANTHROPIC_API_KEY
-      ? 'anthropic'
-      : env.LITELLM_API_KEY
-        ? 'litellm'
-        : 'stub';
+  // Precedence: DeepSeek > Kimi > Anthropic > LiteLLM > offline stub.
+  const llm: ArbiterConfig['llm'] = env.DEEP_SEEK_API_KEY
+    ? 'deepseek'
+    : env.KIMI_API_KEY
+      ? 'kimi'
+      : env.ANTHROPIC_API_KEY
+        ? 'anthropic'
+        : env.LITELLM_API_KEY
+          ? 'litellm'
+          : 'stub';
   const models =
-    llm === 'kimi'
-      ? { draft: env.KIMI_MODEL, default: env.KIMI_MODEL, judge: env.KIMI_MODEL }
-      : llm === 'litellm'
-        ? { draft: env.LITELLM_MODEL, default: env.LITELLM_MODEL, judge: env.LITELLM_MODEL }
-        : { draft: env.ARBITER_MODEL_DRAFT, default: env.ARBITER_MODEL_DEFAULT, judge: env.ARBITER_MODEL_JUDGE };
+    llm === 'deepseek'
+      ? { draft: env.DEEP_SEEK_MODEL, default: env.DEEP_SEEK_MODEL, judge: env.DEEP_SEEK_MODEL }
+      : llm === 'kimi'
+        ? { draft: env.KIMI_MODEL, default: env.KIMI_MODEL, judge: env.KIMI_MODEL }
+        : llm === 'litellm'
+          ? { draft: env.LITELLM_MODEL, default: env.LITELLM_MODEL, judge: env.LITELLM_MODEL }
+          : { draft: env.ARBITER_MODEL_DRAFT, default: env.ARBITER_MODEL_DEFAULT, judge: env.ARBITER_MODEL_JUDGE };
   const demask = env.ARBITER_DEMASK_KEY ? 'encrypted' : 'ephemeral';
   // Never silently store PII unencrypted in a deployed environment.
   if (env.NODE_ENV === 'production' && demask === 'ephemeral') {
@@ -177,6 +193,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): ArbiterConf
     runner: env.ARBITER_RUNNER,
     embeddings: env.ARBITER_EMBEDDINGS,
     models,
+    deepseek: {
+      baseUrl: env.DEEP_SEEK_BASE_URL,
+      model: env.DEEP_SEEK_MODEL,
+    },
     kimi: {
       baseUrl: env.KIMI_BASE_URL,
       model: env.KIMI_MODEL,
