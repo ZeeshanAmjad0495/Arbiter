@@ -1,11 +1,11 @@
 # Zuub E2E — real-LLM run
 
-- Provider: **kimi** · model(s) actually used: **kimi-k2.7-code**
+- Provider: **deepseek** · model(s) actually used: **deepseek-v4-pro**
 - Cases: **468** (39 flows × 12 tickets)
-- Succeeded: **466** · Errored: **2**
-- Sanitizer hard-blocked (credential ticket): **39** · Grounding violations: **79**
-- Gate decisions: approved=59 · pending=289 · rejected=39 · needs_changes=79
-- Avg latency/run: **58734ms** · Wall time: **844.1s**
+- Succeeded: **468** · Errored: **0**
+- Sanitizer hard-blocked (credential ticket): **39** · Grounding violations: **73**
+- Gate decisions: approved=64 · pending=291 · rejected=39 · needs_changes=74
+- Avg latency/run: **32337ms** · Wall time: **406.4s**
 
 ## Per-flow
 
@@ -30,7 +30,7 @@
 | security-abuse-cases | 12/12 | 0 |
 | exploratory-charter | 12/12 | 0 |
 | uat-script | 12/12 | 0 |
-| cross-req-inconsistency | 10/12 | 2 |
+| cross-req-inconsistency | 12/12 | 0 |
 | spec-change-impact | 12/12 | 0 |
 | smoke-suite | 12/12 | 0 |
 | regression-impact | 12/12 | 0 |
@@ -50,8 +50,3 @@
 | sre-runbook | 12/12 | 0 |
 | ops-config | 12/12 | 0 |
 | test-estimation | 12/12 | 0 |
-
-## Errors (2)
-
-- cross-req-inconsistency × IV-4188: timeout after 240000ms: cross-req-inconsistency×IV-4188
-- cross-req-inconsistency × CS-1502: timeout after 240000ms: cross-req-inconsistency×CS-1502

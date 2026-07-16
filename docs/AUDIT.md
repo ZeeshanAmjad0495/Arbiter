@@ -55,15 +55,17 @@ when it actually means *"never checked"*.
 `accessibility-ac`, `nfr-result-triage`, `persona-scenarios`, `mobile-test-cases`,
 `chaos-gameday`, `dr-drill`, `sre-runbook`, `ops-config`.
 
-**Empirical proof** (from `evals/reports/zuub-e2e-report.json`, 468 real-LLM runs):
+**Empirical proof** — reproduced across **two independent model providers** (468 real
+runs each), which rules out any model-specific artifact:
 
-| group | runs | total grounding violations |
+| provider | 19 workflows **without** `extractClaims` | 20 workflows **with** it |
 | --- | --- | --- |
-| the 19 workflows **without** `extractClaims` | 228 | **0** |
-| the 20 workflows **with** `extractClaims` | 238 | **187** |
+| Kimi (`kimi-k2.7-code`) | 228 runs → **0** violations | 187 violations |
+| DeepSeek (`deepseek-v4-pro`) | 228 runs → **0** violations | 206 violations |
 
-Zero violations across 228 real runs is not evidence of well-grounded output; it is the
-signature of a control that never executes.
+Zero violations across 456 real runs on two different models is not evidence of
+well-grounded output; it is the signature of a control that never executes. The defect is
+structural, not probabilistic.
 
 **Failure scenario:** A QA engineer runs `bug-report` on a Zuub ticket. The model
 hallucinates an endpoint `/v1/claims/refund` and a field `refund_status` that exist in no
