@@ -31,7 +31,13 @@ const RUN_TIMEOUT_MS = 240_000;
 const smokeOnly = process.argv.includes('--smoke');
 /** --persist: write the run to the real Postgres so the drafts show up in the web UI. */
 const persist = process.argv.includes('--persist');
-const PROJECT_NAME = 'Zuub E2E';
+/**
+ * --project <name>: which project to run against. Defaults to the self-contained
+ * 'Zuub E2E' corpus; pass `--project Zuub` to ground the run in the full ingested
+ * Zuub corpus (12k docs) instead of the 12 synthetic tickets.
+ */
+const projectArg = process.argv.indexOf('--project');
+const PROJECT_NAME = projectArg > -1 ? (process.argv[projectArg + 1] ?? 'Zuub E2E') : 'Zuub E2E';
 const E2E_EMAIL = 'e2e@zuub.test';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
