@@ -64,15 +64,55 @@ const ReviewBody = z.object({
   dwellMs: z.number().int().nonnegative().optional(),
 });
 
-/** Derive a human-readable title for the review queue from arbitrary output. */
-function summaryOf(content: unknown): string {
-  if (content && typeof content === 'object') {
-    const o = content as Record<string, unknown>;
-    if (typeof o.title === 'string') return o.title;
-    if (typeof o.summary === 'string') return o.summary;
-    const firstStr = Object.values(o).find((v) => typeof v === 'string');
-    if (typeof firstStr === 'string') return firstStr;
+/** Keys whose value reads as a title. Suffix-matched, so `strategySummary` / `incidentTitle` count. */
+const SUMMARY_KEY = /(title|summary|name|objective|description|overview|charter|headline)$/i;
+/** Fields inside a list item that describe it, best first. */
+const ITEM_DESC_KEYS = ['scenario', 'statement', 'title', 'summary', 'name', 'area', 'description', 'question'];
+const MAX_SUMMARY = 200;
+
+const humanizeKey = (k: string): string =>
+  k
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim()
+    .toLowerCase();
+
+const clip = (s: string): string => {
+  const t = s.trim().replace(/\s+/g, ' ');
+  return t.length > MAX_SUMMARY ? `${t.slice(0, MAX_SUMMARY - 1)}…` : t;
+};
+
+/**
+ * Derive a human-readable title for the review queue from arbitrary workflow output.
+ *
+ * The 39 workflows emit different shapes, so this is structural rather than positional.
+ * Order matters: a naive "first string value" pick returns an enum (test_strategy's
+ * `riskPosture: "elevated"`) instead of its `strategySummary`, and list-shaped outputs
+ * (edge_cases, requirement_analysis) have no top-level string at all.
+ */
+export function summaryOf(content: unknown): string {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return '(untitled artifact)';
+  const o = content as Record<string, unknown>;
+
+  // 1. An explicit title/summary-ish field always wins, wherever it sits in key order.
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'string' && v.trim() && SUMMARY_KEY.test(k)) return clip(v);
   }
+
+  // 2. Otherwise describe the primary list: "10 edge cases — <first scenario>".
+  for (const [k, v] of Object.entries(o)) {
+    if (Array.isArray(v) && v.length > 0 && v[0] && typeof v[0] === 'object' && !Array.isArray(v[0])) {
+      const first = v[0] as Record<string, unknown>;
+      const desc = ITEM_DESC_KEYS.map((d) => first[d]).find((x) => typeof x === 'string' && x.trim().length > 0);
+      const label = `${v.length} ${humanizeKey(k)}`;
+      return typeof desc === 'string' ? clip(`${label} — ${desc}`) : label;
+    }
+  }
+
+  // 3. Fall back to genuinely descriptive prose — never a short enum like "elevated".
+  const prose = Object.values(o).find((v) => typeof v === 'string' && v.trim().length >= 25);
+  if (typeof prose === 'string') return clip(prose);
+
   return '(untitled artifact)';
 }
 
