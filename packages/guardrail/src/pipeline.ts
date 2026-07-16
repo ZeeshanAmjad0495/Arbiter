@@ -178,6 +178,12 @@ export class GuardrailEngine {
           findings: sanitization.findings.length,
           blocked: sanitization.blocked,
           blockReasons: sanitization.blockReasons,
+          // The request, as the model actually saw it. Recorded so a reviewer can judge
+          // the draft against what was ASKED (previously the trail held only counts, so
+          // "what am I approving?" was unanswerable) and so the audit is forensically
+          // complete. ALWAYS the sanitized text — never the raw input, which may hold
+          // PII; the de-mask vault stays the only PII sink. Bounded to keep rows sane.
+          requirement: sanitization.sanitizedText.slice(0, 4000),
         },
         { inputSha256: sanitization.originalSha256 },
       );

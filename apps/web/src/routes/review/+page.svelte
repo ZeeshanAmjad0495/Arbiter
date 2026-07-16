@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { getArtifact, listReviews, submitReview, type Artifact, type ReviewItem, type ReviewLog } from '$lib/api';
+  import { getArtifact, listReviews, submitReview, type Artifact, type ArtifactRequest, type ReviewItem, type ReviewLog } from '$lib/api';
   import DocView from '$lib/components/DocView.svelte';
+
+  let request = $state<ArtifactRequest | null>(null);
 
   /** Reviewers read the rendered document; 'json' is the escape hatch for editing. */
   let mode = $state<'read' | 'json'>('read');
@@ -53,6 +55,7 @@
     try {
       const detail = await getArtifact(id);
       artifact = detail.artifact;
+      request = detail.request ?? null;
       history = detail.reviews;
       originalJson = JSON.stringify(detail.artifact.content, null, 2);
       editedJson = originalJson;
@@ -133,12 +136,23 @@
     {#if artifact}
       <article class="card">
         <h3>
-          Review document <span class="tag muted">{artifact.type}</span>
-          <span class="tag muted">{artifact.model ?? ''}</span>
+          {request?.workflow?.label ?? artifact.type}
           <span class="badge {artifact.riskTier === 'high' ? 'rejected' : artifact.riskTier === 'medium' ? 'needs_changes' : 'approved'}">
             {artifact.riskTier} risk
           </span>
         </h3>
+        {#if request?.workflow?.description}
+          <p class="what">{request.workflow.description}</p>
+        {/if}
+        <p class="by">Drafted by {artifact.model ?? 'the model'} · you decide whether it's fit to use.</p>
+
+        {#if request?.requirement}
+          <details class="req" open>
+            <summary>The request this answers</summary>
+            <p class="req-text">{request.requirement}</p>
+          </details>
+        {/if}
+
         <div class="mode-row">
           <p class="hint" style="margin:0">
             {mode === 'read' ? 'Read the draft, then choose a decision.' : 'Edit the content if needed — your changes are saved as feedback.'}
@@ -227,6 +241,38 @@
     .findings {
       max-height: 60vh;
     }
+  }
+  .what {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .by {
+    margin: 4px 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .req {
+    background: var(--inset);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  .req summary {
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--muted);
+  }
+  .req-text {
+    margin: 8px 0 0;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    color: var(--ink);
   }
   .mode-row {
     display: flex;

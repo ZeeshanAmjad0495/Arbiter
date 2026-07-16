@@ -954,7 +954,24 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const artifact = await deps.engine.repos.artifacts.get(projectId, idCheck.data);
     if (!artifact) return reply.status(404).send({ error: 'not_found' });
     const reviews = await deps.engine.repos.reviews.listByArtifact(projectId, artifact.id);
-    return { artifact, reviews };
+
+    // A reviewer cannot judge a draft without the request that produced it, nor from a
+    // raw workflow id. Surface both: the sanitized requirement recorded on the run, and
+    // the workflow's human label + description. `requirement` is null for runs recorded
+    // before it was captured.
+    const audit = await deps.engine.repos.audit.listByRun(projectId, artifact.workflowRunId);
+    const sanitizeEvent = audit.find((a) => a.action === 'sanitize');
+    const requirement = (sanitizeEvent?.detail as { requirement?: unknown } | undefined)?.requirement;
+    const meta = listWorkflowsMeta().find((m) => m.id === (audit.find((a) => a.action === 'workflow.run')?.detail as { workflow?: string } | undefined)?.workflow);
+
+    return {
+      artifact,
+      reviews,
+      request: {
+        requirement: typeof requirement === 'string' ? requirement : null,
+        workflow: meta ? { id: meta.id, label: meta.label, description: meta.description } : null,
+      },
+    };
   });
 
   app.post<{ Params: { id: string } }>('/v1/artifacts/:id/review', async (request, reply) => {

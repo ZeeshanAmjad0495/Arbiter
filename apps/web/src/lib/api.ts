@@ -640,7 +640,13 @@ export async function listReviews(): Promise<ReviewItem[]> {
   return (await res.json()).reviews;
 }
 
-export async function getArtifact(id: string): Promise<{ artifact: Artifact; reviews: ReviewLog[] }> {
+/** What the draft was asked to do — the sanitized request + the workflow's human identity. */
+export interface ArtifactRequest {
+  requirement: string | null;
+  workflow: { id: string; label: string; description: string } | null;
+}
+
+export async function getArtifact(id: string): Promise<{ artifact: Artifact; reviews: ReviewLog[]; request?: ArtifactRequest }> {
   const res = await apiFetch(`/v1/artifacts/${id}`);
   if (!res.ok) throw new Error(`artifact ${res.status}`);
   return res.json();

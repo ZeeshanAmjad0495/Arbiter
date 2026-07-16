@@ -29,6 +29,19 @@
 
   /** Short scalar-ish values render inline; long prose gets its own block. */
   const isLong = (v: unknown): boolean => typeof v === 'string' && v.length > 80;
+
+  /**
+   * Reading order, not key order. Raw JSON key order buries the point — e.g.
+   * feature_flag_matrix listed `flags` and `notes` above its `summary`. Lead with the
+   * headline, then verdicts/scores, then the detail lists.
+   */
+  const LEAD = /(title|summary|headline|objective|overview|verdict|recommendation|decision|posture|score)$/i;
+  const ordered = $derived.by(() => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => !isEmpty(v));
+    const rank = (k: string, v: unknown): number => (LEAD.test(k) ? 0 : isPrimitive(v) ? 1 : 2);
+    return entries.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e[0], a.e[1]) - rank(b.e[0], b.e[1]) || a.i - b.i).map((x) => x.e);
+  });
 </script>
 
 {#if value === null || value === undefined}
@@ -58,13 +71,11 @@
   {/if}
 {:else}
   <dl class="fields">
-    {#each Object.entries(value as Record<string, unknown>) as [k, v]}
-      {#if !isEmpty(v)}
-        <div class="field" class:stacked={!isPrimitive(v) || isLong(v)}>
-          <dt>{humanize(k)}</dt>
-          <dd><Self value={v} level={level + 1} /></dd>
-        </div>
-      {/if}
+    {#each ordered as [k, v]}
+      <div class="field" class:stacked={!isPrimitive(v) || isLong(v)}>
+        <dt>{humanize(k)}</dt>
+        <dd><Self value={v} level={level + 1} /></dd>
+      </div>
     {/each}
   </dl>
 {/if}
